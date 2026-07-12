@@ -4,8 +4,9 @@
 // AimResult and wires these callbacks to the facade. All visuals come from
 // Mantine theme tokens; no hardcoded colors.
  
-import { ActionIcon, Button, Group, Slider, Stack, Text, Paper } from '@mantine/core';
+import { ActionIcon, Box, Group, Stack, Text, Paper } from '@mantine/core';
 import { IconMinus, IconPlus, IconTargetArrow } from '@tabler/icons-react';
+import { useState, useRef, useEffect } from 'react';
 import type { AimResult } from '../types/aiming';
  
 const RAD_TO_DEG = 180 / Math.PI;
@@ -39,8 +40,8 @@ export function AngleControl({
 }: Partial<AimControlsProps> & { aim: AimResult; onAngleChange: (a: number) => void }) {
   const step = fineStepDeg * DEG_TO_RAD;
   return (
-    <Paper p="xs" radius="md" style={glassStyle}>
-      <Group gap="xs" wrap="nowrap">
+    <Paper p={4} radius="md" style={glassStyle}>
+      <Group gap="xs" wrap="nowrap" justify="center">
         <Text size="sm" c="dimmed">Angle</Text>
         <ActionIcon
           aria-label="Nudge aim counter-clockwise"
@@ -67,30 +68,75 @@ export function AngleControl({
     </Paper>
   );
 }
- 
+
 export function PowerControl({ 
   aim, 
   onPowerChange, 
   disabled = false 
 }: Partial<AimControlsProps> & { aim: AimResult; onPowerChange: (p: number) => void }) {
   const powerPct = Math.round(aim.power * 100);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!isDragging || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const val = 1 - (y / rect.height);
+      onPowerChange(Math.max(0, Math.min(1, val)));
+    };
+
+    const handlePointerUp = () => setIsDragging(false);
+
+    if (isDragging) {
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+    }
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [isDragging, onPowerChange]);
+
   return (
-    <Paper p="xs" radius="md" style={glassStyle}>
-      <Group gap="sm" wrap="nowrap">
-        <Text size="sm" c="dimmed">Power</Text>
-        <Slider
-          value={powerPct}
-          onChange={(v) => onPowerChange(v / 100)}
-          min={0}
-          max={100}
-          disabled={disabled}
-          label={(v) => `${v}%`}
-          style={{ width: 120 }}
-        />
-        <Text size="sm" w={40} ta="right" fw={500}>
+    <Paper p={4} radius="md" style={{ ...glassStyle, width: 'fit-content', margin: '0 auto' }}>
+      <Stack gap={4} align="center">
+        <Text size="xs" c="dimmed">Power</Text>
+        <Box 
+          ref={containerRef}
+          onPointerDown={(e) => {
+            if (disabled) return;
+            setIsDragging(true);
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          style={{ 
+            height: 200, 
+            width: 20, 
+            backgroundColor: 'var(--mantine-color-dark-6)',
+            borderRadius: 10,
+            display: 'flex', 
+            alignItems: 'flex-end', 
+            justifyContent: 'center',
+            position: 'relative',
+            cursor: disabled ? 'not-allowed' : 'ns-resize',
+            overflow: 'hidden'
+          }}
+        >
+          <Box 
+            style={{ 
+              height: `${powerPct}%`, 
+              width: '100%', 
+              background: 'var(--mantine-color-blue-filled)',
+              transition: isDragging ? 'none' : 'height 0.1s ease-out',
+            }} 
+          />
+        </Box>
+        <Text size="xs" fw={500}>
           {powerPct}%
         </Text>
-      </Group>
+      </Stack>
     </Paper>
   );
 }
@@ -101,11 +147,11 @@ export function ShootButton({
   disabled = false 
 }: Partial<AimControlsProps> & { aim: AimResult; onShoot: () => void }) {
   return (
-    <Button
-      leftSection={<IconTargetArrow size={20} />}
+    <ActionIcon
+      aria-label="Shoot"
       onClick={onShoot}
       disabled={disabled || aim.power <= 0}
-      h={TARGET_PX}
+      size={TARGET_PX}
       radius="md"
       style={{ 
         ...glassStyle, 
@@ -113,8 +159,8 @@ export function ShootButton({
         border: 'none'
       }}
     >
-      Shoot
-    </Button>
+      <IconTargetArrow size={20} />
+    </ActionIcon>
   );
 }
  

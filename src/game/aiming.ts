@@ -51,8 +51,8 @@ export const aimFromPointer = (
   pointer: Vec2,
   cfg: AimConfig = DEFAULT_AIM,
 ): AimResult => {
-  const dx = cue.x - pointer.x;
-  const dy = cue.y - pointer.y;
+  const dx = pointer.x - cue.x;
+  const dy = pointer.y - cue.y;
   const dist = Math.hypot(dx, dy);
   if (dist === 0) return { angle: 0, power: 0 };
   const angle = Math.atan2(dy, dx);

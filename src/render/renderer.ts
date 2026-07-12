@@ -12,7 +12,7 @@ import {
 } from './transform';
 import { DEFAULT_TABLE_PALETTE, type TablePalette } from './palette';
 import { drawTable } from './table';
-import { ballNumberFont, ballNumberOffset, drawBalls } from './balls';
+import { ballNumberOffset, drawBalls } from './balls';
 
 const TAU = Math.PI * 2;
 // Dash pattern (table units) for the aiming guide. Module-level so setLineDash
@@ -85,8 +85,7 @@ export const createRenderer = (
 
   const palette = options.palette ?? DEFAULT_TABLE_PALETTE;
   const rail = options.railWidth ?? DEFAULT_RAIL_WIDTH;
-  const numberFont = ballNumberFont(geo.ballRadius);
-  const numberOffset = ballNumberOffset();
+  const numberOffset = ballNumberOffset(geo.ballRadius);
   let transform: Transform | null = null;
   let guide: GuideOverlay | null = null;
 
@@ -116,7 +115,7 @@ export const createRenderer = (
     ctx.clearRect(0, 0, t.deviceWidth, t.deviceHeight);
     ctx.drawImage(staticCanvas, 0, 0);
     applyTableMatrix(ctx, t);
-    drawBalls(ctx, prev.balls, curr.balls, alpha, geo.ballRadius, numberFont, numberOffset, palette);
+    drawBalls(ctx, prev.balls, curr.balls, alpha, geo.ballRadius, numberOffset, palette, t);
     if (guide !== null) drawGuide(ctx, guide, geo.ballRadius, palette);
   };
 

@@ -5,6 +5,8 @@
 
 import type { Ball } from '../types/physics';
 import type { TablePalette } from './palette';
+import type { Transform } from './transform';
+import { tableToPixel } from './transform';
 
 const TAU = Math.PI * 2;
 
@@ -47,7 +49,7 @@ export const ballNumberFont = (radius: number): string =>
 
 // Vertical nudge (table units) that visually centers a digit on the ball.
 // We use 'middle' baseline for better centering across most fonts.
-export const ballNumberOffset = (): number => 0;
+export const ballNumberOffset = (radius: number): number => radius * 0.03;
 
 
 const drawBall = (
@@ -56,9 +58,9 @@ const drawBall = (
   y: number,
   id: number,
   radius: number,
-  numberFont: string,
   numberOffset: number,
   palette: TablePalette,
+  t: Transform,
 ): void => {
   const style = BALL_STYLES[id];
   if (style === undefined) return;
@@ -85,11 +87,16 @@ const drawBall = (
   ctx.arc(x, y, radius * 0.42, 0, TAU);
   ctx.fillStyle = palette.ball.numberBg;
   ctx.fill();
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const pos = tableToPixel(t, x, y);
   ctx.fillStyle = palette.ball.numberText;
-  ctx.font = numberFont;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(style.label, x, y + numberOffset);
+  ctx.font = `${(t.scale * radius * NUMBER_FONT_SIZE).toFixed(2)}px ${NUMBER_FONT_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(style.label, pos.x, pos.y + (numberOffset * t.scale));
+  ctx.restore();
 };
 
 // Draw every ball interpolated between the previous and current snapshot by
@@ -101,9 +108,9 @@ export const drawBalls = (
   curr: readonly Ball[],
   alpha: number,
   radius: number,
-  numberFont: string,
   numberOffset: number,
   palette: TablePalette,
+  t: Transform,
 ): void => {
   for (let i = 0; i < curr.length; i++) {
     const c = curr[i];
@@ -111,6 +118,6 @@ export const drawBalls = (
     const p = prev[i] ?? c;
     const x = p.position.x + (c.position.x - p.position.x) * alpha;
     const y = p.position.y + (c.position.y - p.position.y) * alpha;
-    drawBall(ctx, x, y, c.id, radius, numberFont, numberOffset, palette);
+    drawBall(ctx, x, y, c.id, radius, numberOffset, palette, t);
   }
 };

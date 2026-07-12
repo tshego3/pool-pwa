@@ -183,67 +183,78 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
         )}
       </Box>
 
-      {/* The canvas gets all leftover height; the HUD never covers the table. */}
-       <Box style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-         <canvas
-           ref={canvasRef}
-           aria-label="Pool table"
-           style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none', outline: 'none' }}
-         />
-       </Box>
-
-
-
-
-        <Paper
-          component="section"
-          aria-label="Game status"
-          radius={0}
-          p="xs"
-          style={{
-            background: 'var(--mantine-color-dark-8)',
-            minHeight: 120,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-          }}
-        >
-          <Stack gap="md" justify="center">
-            <Group justify="space-between" wrap="nowrap" gap="sm">
-              {game !== null ? <PocketedTray pocketed={game.pocketed} /> : <span />}
-              {busy ? (
-                <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-                  {view?.thinking === true ? 'Bot is planning its shot' : 'Balls in motion'}
-                </Text>
-              ) : null}
-            </Group>
-
-
-
-
-            {gameActive && (
-              <Group justify="center" gap="md" wrap="nowrap" style={{ overflowX: 'auto', paddingBottom: 4 }}>
-                {settings?.showAngleControls && (
-                  <AngleControl 
-                    aim={aim} 
-                    onAngleChange={(angle) => setAim({ ...aim, angle })} 
-                    disabled={!canAim} 
-                  />
-                )}
-                <PowerControl 
+      {/* The main play area: side controls and canvas */}
+      <Box style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0 }}>
+        {gameActive && (
+          <Paper
+            component="section"
+            aria-label="Aim controls"
+            radius={0}
+            p={8}
+            style={{
+              background: 'var(--mantine-color-dark-8)',
+              width: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              borderRight: '1px solid var(--mantine-color-dark-4)',
+            }}
+          >
+            <Stack gap="xs">
+              {settings?.showAngleControls && (
+                <AngleControl 
                   aim={aim} 
-                  onPowerChange={(power) => setAim({ ...aim, power })} 
+                  onAngleChange={(angle) => setAim({ ...aim, angle })} 
                   disabled={!canAim} 
                 />
+              )}
+              <PowerControl 
+                aim={aim} 
+                onPowerChange={(power) => setAim({ ...aim, power })} 
+                disabled={!canAim} 
+              />
+              <Box style={{ display: 'flex', justifyContent: 'center' }}>
                 <ShootButton 
                   aim={aim} 
                   onShoot={fallbackShoot} 
                   disabled={!canAim} 
                 />
-              </Group>
-            )}
-         </Stack>
-       </Paper>
+              </Box>
+            </Stack>
+          </Paper>
+        )}
+        <Box style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+          <canvas
+            ref={canvasRef}
+            aria-label="Pool table"
+            style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none', outline: 'none' }}
+          />
+        </Box>
+      </Box>
+      <Paper
+        component="section"
+        aria-label="Game status"
+        radius={0}
+        p="xs"
+        style={{
+          background: 'var(--mantine-color-dark-8)',
+          minHeight: 60,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+        }}
+      >
+        <Stack gap="md" justify="center">
+          <Group justify="space-between" wrap="nowrap" gap="sm">
+            {game !== null ? <PocketedTray pocketed={game.pocketed} /> : <span />}
+            {busy ? (
+              <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                {view?.thinking === true ? 'Bot is planning its shot' : 'Balls in motion'}
+              </Text>
+            ) : null}
+          </Group>
+        </Stack>
+      </Paper>
 
       <EndOverlay winner={game?.winner ?? null} onRematch={onRematch} onBackToMenu={onExit} />
     </Box>
