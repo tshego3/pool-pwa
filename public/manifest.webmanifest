@@ -1,0 +1,26 @@
+{
+  "name": "8-Ball Pool",
+  "short_name": "8-Ball",
+  "description": "Offline solo 8-ball pool against a local bot opponent.",
+  "start_url": "/pool-pwa/",
+  "scope": "/pool-pwa/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#131313",
+  "background_color": "#131313",
+  "categories": ["games"],
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

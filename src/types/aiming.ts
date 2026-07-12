@@ -1,0 +1,67 @@
+// Pure aiming and ball-in-hand types. Like src/types/physics.ts these are pure
+// interfaces in table-space (meters); no pixels, no DOM. Screen-space lives only
+// in src/render/transform.ts.
+
+import type { Vec2 } from './physics';
+
+// A resolved shot direction and strength derived from a pointer drag.
+export interface AimResult {
+  // Aim direction in radians, table-space, standard math convention.
+  readonly angle: number;
+  // Normalized strength in [0, 1]; scaled to a launch speed by PhysicsConfig.
+  readonly power: number;
+}
+
+// How a pointer drag maps to an AimResult. Distances are in table units.
+export interface AimConfig {
+  // Pull-back distance that maps to full power.
+  readonly maxPullback: number;
+  // Dead-zone below which the shot has zero power (treated as a cancel).
+  readonly minPullback: number;
+}
+
+// The predicted deflection at the cue ball's first ball-to-ball contact.
+export interface GuideContact {
+  // Object ball struck first.
+  readonly ball: number;
+  // Cue-ball center at the moment of contact (the ghost-ball position).
+  readonly ghost: Vec2;
+  // Unit direction the cue ball deflects after contact.
+  readonly cueDir: Vec2;
+  // Unit direction the struck object ball travels after contact.
+  readonly objectDir: Vec2;
+}
+
+// Guide-line prediction: the cue ball's path up to its first contact (or the
+// first rail / rest), plus the deflection at that contact when there is one.
+export interface GuideLine {
+  // Cue-ball center positions: the launch point followed by each vertex where
+  // the path changes (a rail bounce) and the terminal point (ghost / rail /
+  // stop). A straight run between vertices is implied.
+  readonly cuePath: readonly Vec2[];
+  readonly contact: GuideContact | null;
+}
+
+// Options controlling how far the guide line is predicted.
+export interface GuideOptions {
+  // Number of cushion bounces the cue path may follow before stopping. Default 0
+  // (the line stops at the first rail or ball).
+  readonly maxBounces?: number;
+}
+
+// Why a ball-in-hand placement was rejected.
+export type PlacementRejection = 'out-of-bounds' | 'overlap' | 'outside-kitchen';
+
+export interface PlacementResult {
+  readonly legal: boolean;
+  readonly reason: PlacementRejection | null;
+}
+
+// Constraints applied to a ball-in-hand placement.
+export interface PlacementOptions {
+  // Ball id being placed (skipped in the overlap check). Defaults to the cue.
+  readonly cueBallId?: number;
+  // When set, the placement must lie behind the head string (kitchen rule after
+  // a break scratch): position.x must not exceed this value.
+  readonly kitchenMaxX?: number;
+}
