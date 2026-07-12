@@ -42,10 +42,10 @@ const clamp = (v: number, lo: number, hi: number): number =>
 const findBall = (balls: readonly Ball[], id: number): Ball | undefined =>
   balls.find((b) => b.id === id);
 
-// Interpret a pointer drag into a shot. This is a slingshot: the player pulls
-// back from the cue ball and the shot fires in the opposite direction, with
-// power growing as the pull lengthens. Direction is (cue - pointer), so pulling
-// left shoots right. Below the dead zone the power is zero.
+// Interpret a pointer drag into a shot. The player points at the target: the
+// shot fires from the cue ball toward the pointer, direction (pointer - cue).
+// Power grows with drag distance as a fallback, but the screen normally takes
+// power from the HUD slider instead. Below the dead zone the power is zero.
 export const aimFromPointer = (
   cue: Vec2,
   pointer: Vec2,

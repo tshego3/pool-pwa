@@ -4,7 +4,7 @@
 // AimResult and wires these callbacks to the facade. All visuals come from
 // Mantine theme tokens; no hardcoded colors.
  
-import { ActionIcon, Box, Group, Stack, Text, Paper } from '@mantine/core';
+import { ActionIcon, Box, Stack, Text, Paper } from '@mantine/core';
 import { IconMinus, IconPlus, IconTargetArrow } from '@tabler/icons-react';
 import { useState, useRef, useEffect } from 'react';
 import type { AimResult } from '../types/aiming';
@@ -39,22 +39,11 @@ export function AngleControl({
   fineStepDeg = 1 
 }: Partial<AimControlsProps> & { aim: AimResult; onAngleChange: (a: number) => void }) {
   const step = fineStepDeg * DEG_TO_RAD;
+  // Stacked vertically so it fits the narrow side panel on phones.
   return (
-    <Paper p={4} radius="md" style={glassStyle}>
-      <Group gap="xs" wrap="nowrap" justify="center">
-        <Text size="sm" c="dimmed">Angle</Text>
-        <ActionIcon
-          aria-label="Nudge aim counter-clockwise"
-          variant="default"
-          size={TARGET_PX}
-          disabled={disabled}
-          onClick={() => onAngleChange(aim.angle - step)}
-        >
-          <IconMinus size={20} />
-        </ActionIcon>
-        <Text size="sm" w={52} ta="center" fw={500}>
-          {normalizeDeg(aim.angle)}&deg;
-        </Text>
+    <Paper p={4} radius="md" style={{ ...glassStyle, width: 'fit-content', margin: '0 auto' }}>
+      <Stack gap={4} align="center">
+        <Text size="xs" c="dimmed">Angle</Text>
         <ActionIcon
           aria-label="Nudge aim clockwise"
           variant="default"
@@ -64,7 +53,19 @@ export function AngleControl({
         >
           <IconPlus size={20} />
         </ActionIcon>
-      </Group>
+        <Text size="xs" ta="center" fw={500}>
+          {normalizeDeg(aim.angle)}&deg;
+        </Text>
+        <ActionIcon
+          aria-label="Nudge aim counter-clockwise"
+          variant="default"
+          size={TARGET_PX}
+          disabled={disabled}
+          onClick={() => onAngleChange(aim.angle - step)}
+        >
+          <IconMinus size={20} />
+        </ActionIcon>
+      </Stack>
     </Paper>
   );
 }
@@ -111,17 +112,19 @@ export function PowerControl({
             setIsDragging(true);
             e.currentTarget.setPointerCapture(e.pointerId);
           }}
-          style={{ 
-            height: 200, 
-            width: 20, 
+          style={{
+            height: 160,
+            width: 28,
             backgroundColor: 'var(--mantine-color-dark-6)',
             borderRadius: 10,
-            display: 'flex', 
-            alignItems: 'flex-end', 
+            display: 'flex',
+            alignItems: 'flex-end',
             justifyContent: 'center',
             position: 'relative',
             cursor: disabled ? 'not-allowed' : 'ns-resize',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            // The drag must never pan the page or trigger long-press gestures.
+            touchAction: 'none',
           }}
         >
           <Box 
@@ -161,25 +164,6 @@ export function ShootButton({
     >
       <IconTargetArrow size={20} />
     </ActionIcon>
-  );
-}
- 
-export function AimControls({
-  aim,
-  onAngleChange,
-  onPowerChange,
-  onShoot,
-  disabled = false,
-  fineStepDeg = 1,
-}: AimControlsProps) {
-  return (
-    <Stack gap="xs">
-      <Group justify="space-between" wrap="nowrap" gap="sm">
-        <AngleControl aim={aim} onAngleChange={onAngleChange} disabled={disabled} fineStepDeg={fineStepDeg} />
-        <ShootButton aim={aim} onShoot={onShoot} disabled={disabled} />
-      </Group>
-      <PowerControl aim={aim} onPowerChange={onPowerChange} disabled={disabled} />
-    </Stack>
   );
 }
 

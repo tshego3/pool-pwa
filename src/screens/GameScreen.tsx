@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ActionIcon, Box, Group, Paper, Stack, Text } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconArrowLeft } from '@tabler/icons-react';
 import { useSettings } from '../hooks/useSettings';
 import type { AimResult } from '../types/aiming';
@@ -147,9 +148,13 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
   const busy = view?.thinking === true || view?.animating === true;
   const canAim = game !== null && !busy && game.winner === null && game.turn === 'player';
   const gameActive = game !== null && game.winner === null;
+  const isWide = useMediaQuery('(min-width: 48em)') === true;
 
   return (
     <Box
+      // Long-press (text selection / iOS callout / context menu) fights the
+      // aim and power drag gestures, so the whole play screen opts out.
+      onContextMenu={(e) => e.preventDefault()}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -157,6 +162,9 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
         height: '100dvh',
         overflow: 'hidden',
         background: 'var(--mantine-color-dark-4)',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
       }}
     >
       <Box component="section" aria-label="Game status" p="xs" style={{ background: 'transparent', position: 'relative' }}>
@@ -190,10 +198,11 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
             component="section"
             aria-label="Aim controls"
             radius={0}
-            p={8}
+            p={4}
             style={{
               background: 'var(--mantine-color-dark-8)',
-              width: 100,
+              // Just wide enough for the 44px touch targets on phones.
+              width: isWide ? 88 : 64,
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'center',

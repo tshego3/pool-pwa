@@ -29,17 +29,17 @@ describe('aiming purity', () => {
 describe('aimFromPointer', () => {
   const cue: Vec2 = { x: 1, y: 0.5 };
 
-  it('shoots away from the pull across all four quadrants', () => {
-    // Pull left -> shoot right (angle 0).
-    expect(aimFromPointer(cue, { x: 0.5, y: 0.5 }).angle).toBeCloseTo(0, 6);
-    // Pull right -> shoot left (angle pi).
-    expect(Math.abs(aimFromPointer(cue, { x: 1.5, y: 0.5 }).angle)).toBeCloseTo(Math.PI, 6);
-    // Pull toward +y -> shoot toward -y.
-    expect(aimFromPointer(cue, { x: 1, y: 1 }).angle).toBeCloseTo(-Math.PI / 2, 6);
-    // Pull toward -y -> shoot toward +y.
-    expect(aimFromPointer(cue, { x: 1, y: 0 }).angle).toBeCloseTo(Math.PI / 2, 6);
+  it('shoots toward the pointer across all four quadrants', () => {
+    // Point right -> shoot right (angle 0).
+    expect(aimFromPointer(cue, { x: 1.5, y: 0.5 }).angle).toBeCloseTo(0, 6);
+    // Point left -> shoot left (angle pi).
+    expect(Math.abs(aimFromPointer(cue, { x: 0.5, y: 0.5 }).angle)).toBeCloseTo(Math.PI, 6);
+    // Point toward +y -> shoot toward +y.
+    expect(aimFromPointer(cue, { x: 1, y: 1 }).angle).toBeCloseTo(Math.PI / 2, 6);
+    // Point toward -y -> shoot toward -y.
+    expect(aimFromPointer(cue, { x: 1, y: 0 }).angle).toBeCloseTo(-Math.PI / 2, 6);
     // Diagonal.
-    expect(aimFromPointer(cue, { x: 0.9, y: 0.4 }).angle).toBeCloseTo(Math.PI / 4, 6);
+    expect(aimFromPointer(cue, { x: 1.1, y: 0.6 }).angle).toBeCloseTo(Math.PI / 4, 6);
   });
 
   it('scales power with pull length and clamps to [0, 1]', () => {
