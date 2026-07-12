@@ -129,6 +129,7 @@ describe('settings round-trip', () => {
     tableColor: 'midnight-blue',
     handedness: 'left',
     defaultDifficulty: 'hard',
+    showAngleControls: true,
   };
 
   it('returns null before anything is saved', async () => {

@@ -35,6 +35,7 @@ export const DEFAULT_GUIDE: Required<GuideOptions> = {
   maxBounces: 0,
 };
 
+const MIN_GUIDE_POWER = 0.1;
 const clamp = (v: number, lo: number, hi: number): number =>
   v < lo ? lo : v > hi ? hi : v;
 
@@ -140,7 +141,7 @@ export const predictGuide = (
   const cue = findBall(sim.balls, cfg.cueBallId);
   if (cue === undefined || cue.pocketed) return { cuePath: [], contact: null };
 
-  const speed = clamp(aim.power, 0, 1) * cfg.maxLaunchSpeed;
+  const speed = clamp(Math.max(aim.power, MIN_GUIDE_POWER), 0, 1) * cfg.maxLaunchSpeed;
   cue.velocity.x = Math.cos(aim.angle) * speed;
   cue.velocity.y = Math.sin(aim.angle) * speed;
 

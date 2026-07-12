@@ -127,8 +127,15 @@ export const reduce = (state: GameState, outcome: ShotOutcome): GameState => {
 
   // --- Break shot ------------------------------------------------------------
   if (state.phase === 'break') {
-    // 8 on the break re-racks; the same player breaks again (house rule).
-    if (eightPotted) return createInitialState(shooter);
+    // 8 on the break is a win (Two-Shot Rule variation).
+    if (eightPotted) return finalize({
+      turn: opponent,
+      groups: state.groups,
+      pocketed: nextPocketed,
+      ballInHand: 'none',
+      foul: null,
+      winner: shooter,
+    });
 
     const legalBreak = outcome.railedBallCount >= 4 || objectPots.length > 0;
     if (outcome.cueScratch || !legalBreak) {

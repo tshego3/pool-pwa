@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActionIcon, Box, Group, Paper, Stack, Text } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
+import { useSettings } from '../hooks/useSettings';
 import type { AimResult } from '../types/aiming';
 import type { Difficulty } from '../types/bot';
 import type { GameSnapshot } from '../types/persistence';
@@ -21,9 +22,9 @@ import { useGameState } from '../hooks/useGameState';
 import { TurnIndicator } from '../components/TurnIndicator';
 import { GroupIndicator } from '../components/GroupIndicator';
 import { FoulBanner } from '../components/FoulBanner';
-import { PowerMeter } from '../components/PowerMeter';
+import { AlertWrapper } from '../components/AlertWrapper';
 import { PocketedTray } from '../components/PocketedTray';
-import { AimControls } from '../components/AimControls';
+import { AngleControl, PowerControl, ShootButton } from '../components/AimControls';
 import { EndOverlay } from '../components/EndOverlay';
 
 export interface GameScreenProps {
@@ -41,8 +42,12 @@ const TARGET_PX = 44;
 export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
+  const { settings } = useSettings();
   const [session, setSession] = useState<GameSession | null>(null);
   const [aim, setAim] = useState<AimResult>(ZERO_AIM);
+  // Latest aim for imperative callbacks created once at mount (input handlers),
+  // kept in sync by the guide effect below.
+  const aimRef = useRef<AimResult>(ZERO_AIM);
   const view = useGameState(session);
   // Seed is fixed for this mount so bot planning stays deterministic across a
   // save/resume cycle. GameScreen is remounted (via key) for every new game.
@@ -83,26 +88,25 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
       canvas,
       getTransform: () => renderer.getTransform(),
       getCuePosition: () => s.cuePosition(),
-      onAim: (next) => {
-        setAim(next);
-        renderer.setGuide(s.computeGuide(next));
-      },
+      onAim: (next) => setAim({ ...next, power: 0 }),
       onShoot: (next) => {
-        renderer.setGuide(null);
         setAim(ZERO_AIM);
         s.shoot(next);
       },
-      onCancel: () => {
-        renderer.setGuide(null);
-        setAim(ZERO_AIM);
-      },
+      onCancel: () => setAim(ZERO_AIM),
       placement: {
         isActive: () => s.placementActive(),
         validate: (pos) => s.validatePlacement(pos),
         onMove: (pos, result) => {
-          if (result.legal) s.previewPlacement(pos);
+          if (!result.legal) return;
+          s.previewPlacement(pos);
+          // The cue moved without an aim change; recompute the guide from it.
+          renderer.setGuide(s.computeGuide(aimRef.current));
         },
-        onCommit: (pos) => s.commitPlacement(pos),
+        onCommit: (pos) => {
+          s.commitPlacement(pos);
+          renderer.setGuide(s.computeGuide(aimRef.current));
+        },
         ballRadius: s.geometry.ballRadius,
       },
     });
@@ -126,13 +130,15 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
     };
   }, [difficulty, resume]);
 
-  const previewAim = (next: AimResult): void => {
-    setAim(next);
-    rendererRef.current?.setGuide(session?.computeGuide(next) ?? null);
-  };
+  // Keep the aim guide on the table the whole time the player is up (the
+  // session returns null when aiming is not possible, e.g. balls in motion or
+  // the bot's turn), and re-aim it on every aim or shot-boundary change.
+  useEffect(() => {
+    aimRef.current = aim;
+    rendererRef.current?.setGuide(session?.computeGuide(aim) ?? null);
+  }, [session, aim, view]);
 
   const fallbackShoot = (): void => {
-    rendererRef.current?.setGuide(null);
     session?.shoot(aim);
     setAim(ZERO_AIM);
   };
@@ -140,79 +146,104 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
   const game = view?.game ?? null;
   const busy = view?.thinking === true || view?.animating === true;
   const canAim = game !== null && !busy && game.winner === null && game.turn === 'player';
+  const gameActive = game !== null && game.winner === null;
 
   return (
     <Box
       style={{
-        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
         width: '100%',
         height: '100dvh',
         overflow: 'hidden',
         background: 'var(--mantine-color-dark-4)',
       }}
     >
-      <canvas
-        ref={canvasRef}
-        aria-label="Pool table"
-        style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none' }}
-      />
-
-      <Box
-        component="section"
-        aria-label="Game status"
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: 'var(--mantine-spacing-sm)' }}
-      >
-        <Group justify="space-between" align="flex-start" wrap="nowrap">
+      <Box component="section" aria-label="Game status" p="xs" style={{ background: 'transparent', position: 'relative' }}>
+        <Group justify="space-between" align="center" wrap="nowrap">
           <ActionIcon
             aria-label="Back to menu"
-            variant="default"
+            variant="subtle"
             size={TARGET_PX}
             onClick={onExit}
           >
             <IconArrowLeft size={22} />
           </ActionIcon>
-          <Stack gap={6} align="flex-end">
+          <Stack gap={4} align="flex-end">
             {game !== null ? <TurnIndicator turn={game.turn} thinking={view?.thinking === true} /> : null}
             {game !== null ? <GroupIndicator groups={game.groups} /> : null}
           </Stack>
         </Group>
-        {game !== null ? (
-          <Box mt="sm">
-            <FoulBanner reason={game.foul} />
+        {game !== null && game.foul !== null && (
+          <Box style={{ position: 'absolute', top: '100%', left: 0, right: 0, padding: 'var(--mantine-spacing-xs)', zIndex: 10 }}>
+            <AlertWrapper visible={game.foul !== null}>
+              <FoulBanner reason={game.foul} />
+            </AlertWrapper>
           </Box>
-        ) : null}
+        )}
       </Box>
 
-      <Paper
-        component="section"
-        aria-label="Shot controls"
-        radius="lg"
-        p="md"
-        style={{
-          position: 'absolute',
-          left: 'var(--mantine-spacing-sm)',
-          right: 'var(--mantine-spacing-sm)',
-          bottom: 'var(--mantine-spacing-sm)',
-          background: 'var(--mantine-color-dark-6)',
-        }}
-      >
-        <Stack gap="sm">
-          {game !== null ? <PocketedTray pocketed={game.pocketed} /> : null}
-          <PowerMeter power={aim.power} />
-          <AimControls
-            aim={aim}
-            onAngleChange={(angle) => previewAim({ ...aim, angle })}
-            onPowerChange={(power) => previewAim({ ...aim, power })}
-            onShoot={fallbackShoot}
-            disabled={!canAim}
-          />
-          {busy ? (
-            <Text size="xs" c="dimmed" ta="center">
-              {view?.thinking === true ? 'Bot is planning its shot' : 'Balls in motion'}
-            </Text>
-          ) : null}
-        </Stack>
-      </Paper>
+      {/* The canvas gets all leftover height; the HUD never covers the table. */}
+       <Box style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+         <canvas
+           ref={canvasRef}
+           aria-label="Pool table"
+           style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none', outline: 'none' }}
+         />
+       </Box>
+
+
+
+
+        <Paper
+          component="section"
+          aria-label="Game status"
+          radius={0}
+          p="xs"
+          style={{
+            background: 'var(--mantine-color-dark-8)',
+            minHeight: 120,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+          }}
+        >
+          <Stack gap="md" justify="center">
+            <Group justify="space-between" wrap="nowrap" gap="sm">
+              {game !== null ? <PocketedTray pocketed={game.pocketed} /> : <span />}
+              {busy ? (
+                <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                  {view?.thinking === true ? 'Bot is planning its shot' : 'Balls in motion'}
+                </Text>
+              ) : null}
+            </Group>
+
+
+
+
+            {gameActive && (
+              <Group justify="center" gap="md" wrap="nowrap" style={{ overflowX: 'auto', paddingBottom: 4 }}>
+                {settings?.showAngleControls && (
+                  <AngleControl 
+                    aim={aim} 
+                    onAngleChange={(angle) => setAim({ ...aim, angle })} 
+                    disabled={!canAim} 
+                  />
+                )}
+                <PowerControl 
+                  aim={aim} 
+                  onPowerChange={(power) => setAim({ ...aim, power })} 
+                  disabled={!canAim} 
+                />
+                <ShootButton 
+                  aim={aim} 
+                  onShoot={fallbackShoot} 
+                  disabled={!canAim} 
+                />
+              </Group>
+            )}
+         </Stack>
+       </Paper>
 
       <EndOverlay winner={game?.winner ?? null} onRematch={onRematch} onBackToMenu={onExit} />
     </Box>

@@ -109,7 +109,7 @@ export const createInput = (options: InputOptions): InputController => {
     if (hit === null) return;
     gesture = { kind: 'aim', pointerId: e.pointerId };
     canvas.setPointerCapture(e.pointerId);
-    options.onAim?.(aimFromPointer(cue, hit.table, aimCfg), hit.table);
+    // On down, we just establish the gesture. Aim is updated during move.
   };
 
   const onMove = (e: PointerEvent): void => {
@@ -147,8 +147,8 @@ export const createInput = (options: InputOptions): InputController => {
     }
     const cue = options.getCuePosition();
     const aim = cue !== null ? aimFromPointer(cue, hit.table, aimCfg) : null;
-    // Releasing inside the dead zone (power 0) is a cancel, not a limp shot.
-    if (aim !== null && aim.power > 0) options.onShoot?.(aim);
+    // No auto-shoot: releasing a drag only confirms the current aim.
+    if (aim !== null) options.onAim?.(aim, hit.table);
     else options.onCancel?.();
   };
 

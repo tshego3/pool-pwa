@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   tableColor: 'classic-green',
   handedness: 'right',
   defaultDifficulty: 'medium',
+  showAngleControls: false,
 };
 
 export interface SettingsState {

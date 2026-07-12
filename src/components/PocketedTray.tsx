@@ -38,7 +38,7 @@ function BallChip({ id }: { readonly id: number }) {
 
 export function PocketedTray({ pocketed }: PocketedTrayProps) {
   return (
-    <Group gap={6} wrap="wrap" aria-label="Pocketed balls">
+    <Group gap={6} wrap="nowrap" style={{ overflowX: 'auto', paddingBottom: 4 }} aria-label="Pocketed balls">
       {pocketed.length === 0 ? (
         <Text size="xs" c="dimmed">
           No balls pocketed

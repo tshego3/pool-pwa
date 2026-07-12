@@ -61,11 +61,15 @@ const computeSubsteps = (balls: readonly Ball[], dt: number, cfg: PhysicsConfig)
   return Math.min(Math.ceil(maxDisp / quarter), cfg.maxSubsteps);
 };
 
-const integrate = (balls: readonly Ball[], t: number): void => {
+const integrate = (balls: readonly Ball[], t: number, geo: TableGeometry): void => {
   for (const b of balls) {
     if (b.pocketed) continue;
     b.position.x += b.velocity.x * t;
     b.position.y += b.velocity.y * t;
+
+    // Clamp to table bounds to prevent balls from escaping
+    b.position.x = Math.max(b.radius, Math.min(geo.width - b.radius, b.position.x));
+    b.position.y = Math.max(b.radius, Math.min(geo.height - b.radius, b.position.y));
   }
 };
 
@@ -141,14 +145,14 @@ const advanceSubstep = (
     guard++;
     const hit = findEarliestCollision(balls, geo, remaining);
     if (hit === null) {
-      integrate(balls, remaining);
+      integrate(balls, remaining, geo);
       return;
     }
-    integrate(balls, hit.toi);
+    integrate(balls, hit.toi, geo);
     resolveHit(balls, cfg, hit, tick, events);
     remaining -= hit.toi;
   }
-  if (remaining > EPSILON) integrate(balls, remaining);
+  if (remaining > EPSILON) integrate(balls, remaining, geo);
 };
 
 const capturePockets = (

@@ -35,10 +35,20 @@ const baseColor = (style: BallStyle, palette: TablePalette): string => {
   return palette.ball.byGroup[style.groupIndex] ?? palette.ball.cue;
 };
 
+const NUMBER_FONT_SIZE = 0.6; // of ball radius
+const NUMBER_FONT_FAMILY = "'Inter', sans-serif";
+// Reference size for measuring digit ink bounds; the ratio is scaled down to
+// the (sub-pixel, table-unit) real font size where metrics would degenerate.
+
 // Precompute the number font for a given ball radius (constant per game). Kept
 // out of the draw loop so no string is built per frame.
 export const ballNumberFont = (radius: number): string =>
-  `${(radius * 0.6).toFixed(4)}px 'Inter', sans-serif`;
+  `${(radius * NUMBER_FONT_SIZE).toFixed(4)}px ${NUMBER_FONT_FAMILY}`;
+
+// Vertical nudge (table units) that visually centers a digit on the ball.
+// We use 'middle' baseline for better centering across most fonts.
+export const ballNumberOffset = (): number => 0;
+
 
 const drawBall = (
   ctx: CanvasRenderingContext2D,
@@ -47,6 +57,7 @@ const drawBall = (
   id: number,
   radius: number,
   numberFont: string,
+  numberOffset: number,
   palette: TablePalette,
 ): void => {
   const style = BALL_STYLES[id];
@@ -76,9 +87,9 @@ const drawBall = (
   ctx.fill();
   ctx.fillStyle = palette.ball.numberText;
   ctx.font = numberFont;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(style.label, x, y);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(style.label, x, y + numberOffset);
 };
 
 // Draw every ball interpolated between the previous and current snapshot by
@@ -91,6 +102,7 @@ export const drawBalls = (
   alpha: number,
   radius: number,
   numberFont: string,
+  numberOffset: number,
   palette: TablePalette,
 ): void => {
   for (let i = 0; i < curr.length; i++) {
@@ -99,6 +111,6 @@ export const drawBalls = (
     const p = prev[i] ?? c;
     const x = p.position.x + (c.position.x - p.position.x) * alpha;
     const y = p.position.y + (c.position.y - p.position.y) * alpha;
-    drawBall(ctx, x, y, c.id, radius, numberFont, palette);
+    drawBall(ctx, x, y, c.id, radius, numberFont, numberOffset, palette);
   }
 };

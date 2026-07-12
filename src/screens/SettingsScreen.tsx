@@ -35,9 +35,17 @@ function SettingsForm({
   readonly onSave: (next: GameSettings) => void;
 }) {
   const [draft, setDraft] = useState<GameSettings>(initial);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    onSave(draft);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
   const update = (patch: Partial<GameSettings>): void =>
     setDraft((prev) => ({ ...prev, ...patch }));
-
+ 
   return (
     <Stack gap="lg">
       <Switch
@@ -45,7 +53,7 @@ function SettingsForm({
         checked={draft.soundEnabled}
         onChange={(e) => update({ soundEnabled: e.currentTarget.checked })}
       />
-
+ 
       <Stack gap="xs">
         <Text component="label" size="sm">
           Guide line bounces: {draft.guideBounces}
@@ -62,7 +70,7 @@ function SettingsForm({
           ]}
         />
       </Stack>
-
+ 
       <Select
         label="Table color"
         data={TABLE_COLOR_OPTIONS}
@@ -70,7 +78,7 @@ function SettingsForm({
         onChange={(v) => update({ tableColor: v ?? draft.tableColor })}
         allowDeselect={false}
       />
-
+ 
       <Stack gap="xs">
         <Text component="label" size="sm">
           Handedness
@@ -84,31 +92,41 @@ function SettingsForm({
           ]}
         />
       </Stack>
+ 
+       <Stack gap="xs">
+         <Text component="label" size="sm">
+           Default difficulty
+         </Text>
+         <SegmentedControl
+           value={draft.defaultDifficulty}
+           onChange={(v) => update({ defaultDifficulty: v as Difficulty })}
+           data={[
+             { value: 'easy', label: 'Easy' },
+             { value: 'medium', label: 'Medium' },
+             { value: 'hard', label: 'Hard' },
+           ]}
+         />
+       </Stack>
 
-      <Stack gap="xs">
-        <Text component="label" size="sm">
-          Default difficulty
-        </Text>
-        <SegmentedControl
-          value={draft.defaultDifficulty}
-          onChange={(v) => update({ defaultDifficulty: v as Difficulty })}
-          data={[
-            { value: 'easy', label: 'Easy' },
-            { value: 'medium', label: 'Medium' },
-            { value: 'hard', label: 'Hard' },
-          ]}
-        />
-      </Stack>
-
-      <Button size="md" onClick={() => onSave(draft)}>
-        Save
-      </Button>
+       <Switch
+         label="Show angle controls"
+         checked={draft.showAngleControls}
+         onChange={(e) => update({ showAngleControls: e.currentTarget.checked })}
+       />
+ 
+      <Group justify="space-between" align="center">
+        <Button size="md" onClick={handleSave}>
+          Save
+        </Button>
+        {saved && <Text size="sm" c="green" fw={500}>Settings saved!</Text>}
+      </Group>
       <Text size="xs" c="dimmed">
         Settings are saved to this device and used the next time you play.
       </Text>
     </Stack>
   );
 }
+
 
 export interface SettingsScreenProps {
   readonly onBack: () => void;

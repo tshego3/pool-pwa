@@ -14,7 +14,7 @@ export function TurnIndicator({ turn, thinking }: TurnIndicatorProps) {
   return (
     <Group gap="xs" wrap="nowrap" aria-live="polite">
       {thinking ? <Loader size="xs" /> : null}
-      <Badge variant={turn === 'player' ? 'filled' : 'light'} size="lg">
+      <Badge variant={turn === 'player' ? 'filled' : 'outline'} size="lg">
         <Text span size="sm" fw={600}>
           {turnLabel(turn, thinking)}
         </Text>

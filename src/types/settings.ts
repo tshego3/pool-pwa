@@ -11,4 +11,5 @@ export interface GameSettings {
   readonly tableColor: string;
   readonly handedness: 'left' | 'right';
   readonly defaultDifficulty: Difficulty;
+  readonly showAngleControls: boolean;
 }

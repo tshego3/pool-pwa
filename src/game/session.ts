@@ -130,6 +130,11 @@ const launchCue = (state: PhysicsState, shot: ShotInput, cfg: PhysicsConfig): vo
 const anyMoving = (state: PhysicsState, cfg: PhysicsConfig): boolean =>
   state.balls.some((b) => isMoving(b, cfg));
 
+// Floor power used only for the guide prediction, so the aim line stays on the
+// table the whole time the player lines up a shot (a zero-power aim would
+// otherwise predict a cue ball that never moves). Real shot power is untouched.
+const GUIDE_PREVIEW_POWER = 0.35;
+
 export const createGameSession = (options: GameSessionOptions): GameSession => {
   const geometry = createEightBallTable();
   const config = DEFAULT_PHYSICS;
@@ -331,8 +336,9 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
       setLiveCue(pos);
     },
     computeGuide: (aim) => {
-      if (!canAim() || aim.power <= 0) return null;
-      const guide = predictGuide(curr, aim, geometry, config);
+      if (!canAim()) return null;
+      const preview = { angle: aim.angle, power: Math.max(aim.power, GUIDE_PREVIEW_POWER) };
+      const guide = predictGuide(curr, preview, geometry, config);
       const path = guide.cuePath;
       if (path.length < 2) return null;
       const from = path[0];

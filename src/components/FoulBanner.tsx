@@ -16,7 +16,7 @@ export function FoulBanner({ reason }: FoulBannerProps) {
   return (
     <Alert
       variant="light"
-      color="dark.0"
+      color="dark.4"
       icon={<IconAlertTriangle size={20} />}
       title="Foul"
       role="alert"
