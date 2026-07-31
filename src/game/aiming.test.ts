@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import aimingSource from './aiming.ts?raw';
-import { aimFromPointer, predictGuide, validateCuePlacement, DEFAULT_AIM } from './aiming';
+import { steerAngle, predictGuide, validateCuePlacement, DEFAULT_AIM } from './aiming';
 import { simulate } from '../engine/simulate';
 import { DEFAULT_PHYSICS } from '../engine/config';
 import { createEightBallTable, rackEightBall } from '../engine/tables/eightBall';
@@ -26,32 +26,62 @@ describe('aiming purity', () => {
   });
 });
 
-describe('aimFromPointer', () => {
+describe('steerAngle', () => {
   const cue: Vec2 = { x: 1, y: 0.5 };
+  const sens = DEFAULT_AIM.steerSensitivity;
 
-  it('shoots toward the pointer across all four quadrants', () => {
-    // Point right -> shoot right (angle 0).
-    expect(aimFromPointer(cue, { x: 1.5, y: 0.5 }).angle).toBeCloseTo(0, 6);
-    // Point left -> shoot left (angle pi).
-    expect(Math.abs(aimFromPointer(cue, { x: 0.5, y: 0.5 }).angle)).toBeCloseTo(Math.PI, 6);
-    // Point toward +y -> shoot toward +y.
-    expect(aimFromPointer(cue, { x: 1, y: 1 }).angle).toBeCloseTo(Math.PI / 2, 6);
-    // Point toward -y -> shoot toward -y.
-    expect(aimFromPointer(cue, { x: 1, y: 0 }).angle).toBeCloseTo(-Math.PI / 2, 6);
-    // Diagonal.
-    expect(aimFromPointer(cue, { x: 1.1, y: 0.6 }).angle).toBeCloseTo(Math.PI / 4, 6);
+  it('leaves the aim alone when the pointer has not moved (a tap never re-aims)', () => {
+    const press: Vec2 = { x: 1.5, y: 0.9 };
+    expect(steerAngle(cue, press, press, 0)).toBeCloseTo(0, 6);
+    // Pressing on the opposite side of the table is still a no-op.
+    expect(steerAngle(cue, { x: 0.2, y: 0.1 }, { x: 0.2, y: 0.1 }, Math.PI / 3)).toBeCloseTo(
+      Math.PI / 3,
+      6,
+    );
   });
 
-  it('scales power with pull length and clamps to [0, 1]', () => {
-    // A pull equal to maxPullback is full power.
-    const full = aimFromPointer(cue, { x: cue.x - DEFAULT_AIM.maxPullback, y: cue.y });
-    expect(full.power).toBeCloseTo(1, 6);
-    // Beyond maxPullback stays clamped at 1.
-    expect(aimFromPointer(cue, { x: 0, y: 0.5 }).power).toBe(1);
-    // Inside the dead zone is zero power.
-    expect(aimFromPointer(cue, { x: cue.x - DEFAULT_AIM.minPullback / 2, y: cue.y }).power).toBe(0);
+  it('corrects the current angle by the swept angle, scaled by sensitivity', () => {
+    // Swing a quarter turn counter-clockwise about the cue (+y is a right-handed
+    // rotation from +x here), starting from an aim of 0.
+    const swept = steerAngle(cue, { x: 1.4, y: 0.5 }, { x: 1, y: 0.9 }, 0);
+    expect(swept).toBeCloseTo((Math.PI / 2) * sens, 6);
+    // The same swing the other way turns the aim the other way.
+    expect(steerAngle(cue, { x: 1, y: 0.9 }, { x: 1.4, y: 0.5 }, 0)).toBeCloseTo(
+      (-Math.PI / 2) * sens,
+      6,
+    );
+    // The correction is added to wherever the aim already was.
+    expect(steerAngle(cue, { x: 1.4, y: 0.5 }, { x: 1, y: 0.9 }, 1)).toBeCloseTo(
+      1 + (Math.PI / 2) * sens,
+      6,
+    );
+  });
+
+  it('is relative, not absolute: the same drag steers the same way anywhere', () => {
+    // Both drags sweep 0.4 rad about the cue, one 0.3 away and one 0.8 away.
+    const near = steerAngle(cue, { x: 1.3, y: 0.5 }, { x: 1.3, y: 0.5 + 0.3 * Math.tan(0.4) }, 0);
+    const far = steerAngle(cue, { x: 1.8, y: 0.5 }, { x: 1.8, y: 0.5 + 0.8 * Math.tan(0.4) }, 0);
+    expect(near).toBeCloseTo(0.4 * sens, 6);
+    expect(far).toBeCloseTo(near, 6);
+  });
+
+  it('ignores drags too close to the cue ball, where a pixel sweeps a huge angle', () => {
+    const r = DEFAULT_AIM.minSteerRadius / 2;
+    expect(steerAngle(cue, { x: cue.x + r, y: cue.y }, { x: cue.x, y: cue.y + r }, 0.7)).toBeCloseTo(
+      0.7,
+      12,
+    );
+    // Guarded at both ends of the drag.
+    expect(steerAngle(cue, { x: 2, y: 0.5 }, { x: cue.x, y: cue.y + r }, 0.7)).toBeCloseTo(0.7, 12);
     // Exactly on the cue ball is a no-op.
-    expect(aimFromPointer(cue, cue)).toEqual({ angle: 0, power: 0 });
+    expect(steerAngle(cue, cue, cue, 0.7)).toBeCloseTo(0.7, 12);
+  });
+
+  it('wraps the result into (-pi, pi] so repeated corrections cannot drift', () => {
+    const wrapped = steerAngle(cue, { x: 1.4, y: 0.5 }, { x: 0.6, y: 0.5 }, Math.PI - 0.1);
+    expect(wrapped).toBeGreaterThan(-Math.PI);
+    expect(wrapped).toBeLessThanOrEqual(Math.PI);
+    expect(wrapped).toBeCloseTo(Math.PI - 0.1 + Math.PI * sens - 2 * Math.PI, 6);
   });
 });
 

@@ -89,11 +89,9 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
       canvas,
       getTransform: () => renderer.getTransform(),
       getCuePosition: () => s.cuePosition(),
-      onAim: (next) => setAim({ ...next, power: 0 }),
-      onShoot: (next) => {
-        setAim(ZERO_AIM);
-        s.shoot(next);
-      },
+      getAimAngle: () => aimRef.current.angle,
+      // Dragging only corrects the angle; power stays where the slider put it.
+      onAim: (angle) => setAim((prev) => ({ ...prev, angle })),
       onCancel: () => setAim(ZERO_AIM),
       placement: {
         isActive: () => s.placementActive(),

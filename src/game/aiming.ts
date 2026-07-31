@@ -24,11 +24,11 @@ import { step } from '../engine/step';
 import { isMoving } from '../engine/friction';
 import { normalize, distance } from '../engine/vec2';
 
-// Interaction defaults, in table units. Tuned so a ~half-table pull is full
-// power; the screen may override per its own ergonomics.
+// Interaction defaults. Half-speed steering gives roughly two finger-swings for
+// a full turn of the cue; the radius guard is about two ball widths.
 export const DEFAULT_AIM: AimConfig = {
-  maxPullback: 0.5,
-  minPullback: 0.01,
+  steerSensitivity: 0.5,
+  minSteerRadius: 0.1,
 };
 
 export const DEFAULT_GUIDE: Required<GuideOptions> = {
@@ -42,23 +42,33 @@ const clamp = (v: number, lo: number, hi: number): number =>
 const findBall = (balls: readonly Ball[], id: number): Ball | undefined =>
   balls.find((b) => b.id === id);
 
-// Interpret a pointer drag into a shot. The player points at the target: the
-// shot fires from the cue ball toward the pointer, direction (pointer - cue).
-// Power grows with drag distance as a fallback, but the screen normally takes
-// power from the HUD slider instead. Below the dead zone the power is zero.
-export const aimFromPointer = (
+// Wrap an angle into (-pi, pi] so the aim never drifts into large multiples of
+// a turn as corrections accumulate.
+const wrapAngle = (a: number): number => {
+  const t = (a + Math.PI) % (2 * Math.PI);
+  return (t < 0 ? t + 2 * Math.PI : t) - Math.PI;
+};
+
+// Steer an existing aim by a drag, relative. `from` is the pointer where the
+// drag started and `to` where it is now; the aim turns by the angle those two
+// sweep around the cue ball, scaled down by the sensitivity. The pointer is a
+// steering wheel, not a target: pressing somewhere new never re-points the cue,
+// it only decides where the correction is measured from.
+export const steerAngle = (
   cue: Vec2,
-  pointer: Vec2,
+  from: Vec2,
+  to: Vec2,
+  startAngle: number,
   cfg: AimConfig = DEFAULT_AIM,
-): AimResult => {
-  const dx = pointer.x - cue.x;
-  const dy = pointer.y - cue.y;
-  const dist = Math.hypot(dx, dy);
-  if (dist === 0) return { angle: 0, power: 0 };
-  const angle = Math.atan2(dy, dx);
-  const span = Math.max(cfg.maxPullback - cfg.minPullback, 1e-9);
-  const power = clamp((dist - cfg.minPullback) / span, 0, 1);
-  return { angle, power };
+): number => {
+  const ax = from.x - cue.x;
+  const ay = from.y - cue.y;
+  const bx = to.x - cue.x;
+  const by = to.y - cue.y;
+  if (Math.hypot(ax, ay) < cfg.minSteerRadius) return wrapAngle(startAngle);
+  if (Math.hypot(bx, by) < cfg.minSteerRadius) return wrapAngle(startAngle);
+  const sweep = Math.atan2(ax * by - ay * bx, ax * bx + ay * by);
+  return wrapAngle(startAngle + sweep * cfg.steerSensitivity);
 };
 
 // Clone just enough of the state to run a throwaway prediction without touching

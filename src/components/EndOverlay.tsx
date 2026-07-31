@@ -2,7 +2,7 @@
 // A Mantine Modal so it traps focus and is keyboard-dismissable; opened only
 // when the rules snapshot reports a winner.
 
-import { Button, Modal, Stack, Text, Title } from '@mantine/core';
+import { Button, Modal, Stack, Text } from '@mantine/core';
 import { IconArrowBackUp, IconRefresh } from '@tabler/icons-react';
 import type { Seat } from '../types/rules';
 import { winnerLabel } from './hudLabels';
@@ -21,7 +21,16 @@ export function EndOverlay({ winner, onRematch, onBackToMenu }: EndOverlayProps)
       onClose={onBackToMenu}
       centered
       withCloseButton={false}
-      title={<Title order={2}>Game over</Title>}
+      // Modal.Title is already an h2, so the heading is styled here rather than
+      // nested in a Title component (which would put an h2 inside an h2).
+      title="Game over"
+      styles={{
+        title: {
+          fontSize: 'var(--mantine-h2-font-size)',
+          fontWeight: 'var(--mantine-heading-font-weight)',
+          lineHeight: 'var(--mantine-h2-line-height)',
+        },
+      }}
     >
       <Stack gap="lg">
         <Text size="lg" fw={600}>

@@ -114,7 +114,7 @@ export function PowerControl({
           }}
           style={{
             height: 160,
-            width: 28,
+            width: 25,
             backgroundColor: 'var(--mantine-color-dark-6)',
             borderRadius: 10,
             display: 'flex',

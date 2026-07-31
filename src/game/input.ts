@@ -1,14 +1,17 @@
 // Pointer-driven aiming and ball-in-hand input. This is the facade's I/O edge:
 // it owns the DOM Pointer Events (unifying mouse, touch, and pen), converts
 // screen pixels to table units via src/render/transform.ts, and calls back with
-// pure AimResult / placement data. All aiming math lives in ./aiming; this file
+// pure angle / placement data. All aiming math lives in ./aiming; this file
 // only sequences gestures. Nothing here is imported by the engine/rules/bot.
+//
+// Aiming is relative: a drag corrects the current angle left or right by how far
+// it swings around the cue ball. Tapping the table does not aim at the tap.
 
 import type { Transform } from '../render/transform';
 import { pixelToTable, tableToPixel } from '../render/transform';
 import type { Vec2 } from '../types/physics';
-import type { AimResult, AimConfig, PlacementResult } from '../types/aiming';
-import { aimFromPointer, DEFAULT_AIM } from './aiming';
+import type { AimConfig, PlacementResult } from '../types/aiming';
+import { steerAngle, DEFAULT_AIM } from './aiming';
 
 // Minimum grab radius in CSS pixels for picking up the cue ball, so the target
 // stays >=44px across even when the ball is drawn tiny.
@@ -34,9 +37,10 @@ export interface InputOptions {
   // Current cue-ball table position, or null when the shot is not aimable (e.g.
   // balls still moving, or it is the bot's turn).
   readonly getCuePosition: () => Vec2 | null;
+  // Current aim angle in radians: every drag corrects this, it never replaces it.
+  readonly getAimAngle: () => number;
   readonly aimConfig?: AimConfig;
-  readonly onAim?: (aim: AimResult, pointer: Vec2) => void;
-  readonly onShoot?: (aim: AimResult) => void;
+  readonly onAim?: (angle: number) => void;
   readonly onCancel?: () => void;
   readonly placement?: PlacementHandlers;
 }
@@ -45,7 +49,18 @@ export interface InputController {
   dispose(): void;
 }
 
-type Gesture = { readonly kind: 'aim' | 'place'; readonly pointerId: number } | null;
+// An aim gesture remembers where it grabbed and the angle it started from, so
+// every move reports one correction measured from the press, not from the last
+// frame (which would let rounding accumulate).
+type Gesture =
+  | { readonly kind: 'place'; readonly pointerId: number }
+  | {
+      readonly kind: 'aim';
+      readonly pointerId: number;
+      readonly anchor: Vec2;
+      readonly startAngle: number;
+    }
+  | null;
 
 // Device-pixel position of a pointer event within the canvas backing store.
 const clientToDevice = (
@@ -107,9 +122,14 @@ export const createInput = (options: InputOptions): InputController => {
     }
     const hit = tableAt(e.clientX, e.clientY);
     if (hit === null) return;
-    gesture = { kind: 'aim', pointerId: e.pointerId };
+    gesture = {
+      kind: 'aim',
+      pointerId: e.pointerId,
+      anchor: hit.table,
+      startAngle: options.getAimAngle(),
+    };
     canvas.setPointerCapture(e.pointerId);
-    // On down, we just establish the gesture. Aim is updated during move.
+    // Pressing only anchors the drag; the aim moves on the first pointermove.
   };
 
   const onMove = (e: PointerEvent): void => {
@@ -122,7 +142,7 @@ export const createInput = (options: InputOptions): InputController => {
     }
     const cue = options.getCuePosition();
     if (cue === null) return;
-    options.onAim?.(aimFromPointer(cue, hit.table, aimCfg), hit.table);
+    options.onAim?.(steerAngle(cue, gesture.anchor, hit.table, gesture.startAngle, aimCfg));
   };
 
   const endGesture = (pointerId: number): void => {
@@ -130,38 +150,41 @@ export const createInput = (options: InputOptions): InputController => {
     if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
   };
 
+  // Abandon the in-flight gesture: an aim drag rewinds to the angle it started
+  // from, ball-in-hand falls back to the caller's cancel handling.
+  const abortGesture = (): void => {
+    if (gesture === null) return;
+    const aborted = gesture;
+    endGesture(aborted.pointerId);
+    if (aborted.kind === 'aim') options.onAim?.(aborted.startAngle);
+    else options.onCancel?.();
+  };
+
   const onUp = (e: PointerEvent): void => {
     if (gesture === null || e.pointerId !== gesture.pointerId) return;
     const kind = gesture.kind;
     const hit = tableAt(e.clientX, e.clientY);
-    endGesture(e.pointerId);
     if (hit === null) {
-      options.onCancel?.();
+      abortGesture();
       return;
     }
-    if (kind === 'place') {
-      const result = options.placement?.validate(hit.table);
-      if (result?.legal) options.placement?.onCommit?.(hit.table);
-      else options.onCancel?.();
-      return;
-    }
-    const cue = options.getCuePosition();
-    const aim = cue !== null ? aimFromPointer(cue, hit.table, aimCfg) : null;
-    // No auto-shoot: releasing a drag only confirms the current aim.
-    if (aim !== null) options.onAim?.(aim, hit.table);
+    endGesture(e.pointerId);
+    // No auto-shoot, and no aim update on release: the drag already applied
+    // every correction it was going to.
+    if (kind !== 'place') return;
+    const result = options.placement?.validate(hit.table);
+    if (result?.legal) options.placement?.onCommit?.(hit.table);
     else options.onCancel?.();
   };
 
   const onCancelEvent = (e: PointerEvent): void => {
     if (gesture === null || e.pointerId !== gesture.pointerId) return;
-    endGesture(e.pointerId);
-    options.onCancel?.();
+    abortGesture();
   };
 
   const onKeyDown = (e: KeyboardEvent): void => {
     if (gesture === null || e.key !== 'Escape') return;
-    endGesture(gesture.pointerId);
-    options.onCancel?.();
+    abortGesture();
   };
 
   canvas.addEventListener('pointerdown', onDown);

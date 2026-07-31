@@ -12,12 +12,16 @@ export interface AimResult {
   readonly power: number;
 }
 
-// How a pointer drag maps to an AimResult. Distances are in table units.
+// How a pointer drag steers the aim. A drag never points the cue at the pointer;
+// it corrects the existing angle by the amount the pointer swings around the cue
+// ball, so a stray tap cannot throw the aim across the table.
 export interface AimConfig {
-  // Pull-back distance that maps to full power.
-  readonly maxPullback: number;
-  // Dead-zone below which the shot has zero power (treated as a cancel).
-  readonly minPullback: number;
+  // Multiplier on the swept angle. Below 1 the aim turns slower than the finger,
+  // which is what makes fine left/right correction possible.
+  readonly steerSensitivity: number;
+  // Drags inside this radius of the cue ball (table units) are ignored: that
+  // close, a pixel of movement sweeps a huge angle.
+  readonly minSteerRadius: number;
 }
 
 // The predicted deflection at the cue ball's first ball-to-ball contact.
