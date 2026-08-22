@@ -10,7 +10,7 @@ import { ActionIcon, Box, Group, Paper, Stack, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconArrowLeft } from '@tabler/icons-react';
 import { useSettings } from '../hooks/useSettings';
-import type { AimResult } from '../types/aiming';
+import type { AimResult, GuideOptions } from '../types/aiming';
 import type { Difficulty } from '../types/bot';
 import type { GameSnapshot } from '../types/persistence';
 import { SCHEMA_VERSION } from '../types/persistence';
@@ -19,6 +19,7 @@ import { createGameSession, type GameSession } from '../game/session';
 import { createLoop } from '../game/loop';
 import { createInput } from '../game/input';
 import { createRenderer, type Renderer } from '../render/renderer';
+import { DEFAULT_TABLE_PALETTE_KEY, tablePalette } from '../render/palette';
 import { useGameState } from '../hooks/useGameState';
 import { TurnIndicator } from '../components/TurnIndicator';
 import { GroupIndicator } from '../components/GroupIndicator';
@@ -49,6 +50,9 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
   // Latest aim for imperative callbacks created once at mount (input handlers),
   // kept in sync by the guide effect below.
   const aimRef = useRef<AimResult>(ZERO_AIM);
+  // Same for the user's guide settings, so the mount-time placement callbacks
+  // redraw the guide with the current cushion-follow count, not a stale one.
+  const guideOptsRef = useRef<GuideOptions>({ maxBounces: 0 });
   const view = useGameState(session);
   // Seed is fixed for this mount so bot planning stays deterministic across a
   // save/resume cycle. GameScreen is remounted (via key) for every new game.
@@ -100,11 +104,11 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
           if (!result.legal) return;
           s.previewPlacement(pos);
           // The cue moved without an aim change; recompute the guide from it.
-          renderer.setGuide(s.computeGuide(aimRef.current));
+          renderer.setGuide(s.computeGuide(aimRef.current, guideOptsRef.current));
         },
         onCommit: (pos) => {
           s.commitPlacement(pos);
-          renderer.setGuide(s.computeGuide(aimRef.current));
+          renderer.setGuide(s.computeGuide(aimRef.current, guideOptsRef.current));
         },
         ballRadius: s.geometry.ballRadius,
       },
@@ -129,13 +133,25 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
     };
   }, [difficulty, resume]);
 
+  // The felt finish is a setting, so it can change (or arrive from IndexedDB)
+  // after the renderer is built. Swapping the palette redraws the static layer
+  // only; the game in progress is never restarted for a color change.
+  const tableColor = settings?.tableColor ?? DEFAULT_TABLE_PALETTE_KEY;
+  useEffect(() => {
+    rendererRef.current?.setPalette(tablePalette(tableColor));
+  }, [session, tableColor]);
+
   // Keep the aim guide on the table the whole time the player is up (the
   // session returns null when aiming is not possible, e.g. balls in motion or
-  // the bot's turn), and re-aim it on every aim or shot-boundary change.
+  // the bot's turn), and re-aim it on every aim, settings, or shot-boundary
+  // change.
+  const guideBounces = settings?.guideBounces ?? 0;
   useEffect(() => {
     aimRef.current = aim;
-    rendererRef.current?.setGuide(session?.computeGuide(aim) ?? null);
-  }, [session, aim, view]);
+    const opts: GuideOptions = { maxBounces: guideBounces };
+    guideOptsRef.current = opts;
+    rendererRef.current?.setGuide(session?.computeGuide(aim, opts) ?? null);
+  }, [session, aim, view, guideBounces]);
 
   const fallbackShoot = (): void => {
     session?.shoot(aim);
@@ -144,6 +160,10 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
 
   const game = view?.game ?? null;
   const busy = view?.thinking === true || view?.animating === true;
+  // While the bot addresses the ball the controls mirror its planned shot. They
+  // stay disabled throughout the bot's turn, so this is a read-out, not a
+  // handover: the player's own aim is untouched and cannot be applied here.
+  const shownAim = view?.botAim ?? aim;
   const canAim = game !== null && !busy && game.winner === null && game.turn === 'player';
   const gameActive = game !== null && game.winner === null;
   const isWide = useMediaQuery('(min-width: 48em)') === true;
@@ -210,19 +230,19 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
             <Stack gap="xs">
               {settings?.showAngleControls && (
                 <AngleControl 
-                  aim={aim} 
+                  aim={shownAim} 
                   onAngleChange={(angle) => setAim({ ...aim, angle })} 
                   disabled={!canAim} 
                 />
               )}
               <PowerControl 
-                aim={aim} 
+                aim={shownAim} 
                 onPowerChange={(power) => setAim({ ...aim, power })} 
                 disabled={!canAim} 
               />
               <Box style={{ display: 'flex', justifyContent: 'center' }}>
                 <ShootButton 
-                  aim={aim} 
+                  aim={shownAim} 
                   onShoot={fallbackShoot} 
                   disabled={!canAim} 
                 />

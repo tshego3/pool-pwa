@@ -38,6 +38,11 @@ export interface TablePalette extends FeltColors {
   readonly guide: string;
   // Ghost-ball / impact marker on the guide.
   readonly guideImpact: string;
+  // Predicted object-ball path after contact: the line that answers "where does
+  // the ball go", so it is the strongest of the three.
+  readonly guideObject: string;
+  // Predicted cue-ball deflection after contact.
+  readonly guideCue: string;
 }
 
 // Ball suit colors are constant across every felt finish; only the felt/wood
@@ -67,6 +72,8 @@ const makePalette = (felt: FeltColors): TablePalette => ({
   ball: BALL,
   guide: 'rgba(245, 245, 245, 0.85)',
   guideImpact: 'rgba(245, 245, 245, 0.5)',
+  guideObject: 'rgba(245, 245, 245, 0.95)',
+  guideCue: 'rgba(245, 245, 245, 0.55)',
 });
 
 export const TABLE_PALETTES = {
@@ -101,3 +108,12 @@ export type TablePaletteKey = keyof typeof TABLE_PALETTES;
 export const DEFAULT_TABLE_PALETTE_KEY: TablePaletteKey = 'classic-green';
 export const DEFAULT_TABLE_PALETTE: TablePalette =
   TABLE_PALETTES[DEFAULT_TABLE_PALETTE_KEY];
+
+const isTablePaletteKey = (key: string): key is TablePaletteKey =>
+  Object.prototype.hasOwnProperty.call(TABLE_PALETTES, key);
+
+// Resolve a saved tableColor setting to a palette. The setting is stored as a
+// plain string (the types layer takes no render dependency), so an unknown or
+// stale key falls back to the default finish rather than breaking the table.
+export const tablePalette = (key: string): TablePalette =>
+  isTablePaletteKey(key) ? TABLE_PALETTES[key] : DEFAULT_TABLE_PALETTE;

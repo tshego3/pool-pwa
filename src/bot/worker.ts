@@ -7,11 +7,9 @@
 // the bot fully offline. All randomness still flows from the request `seed`.
 
 import type { BotPlanRequest, BotPlanResponse } from '../types/bot';
-import type { ShotInput } from '../types/physics';
 import { createPrng } from '../engine/prng';
 import { enumerateCandidates } from './candidates';
-import { scoreCandidate } from './evaluate';
-import { DIFFICULTY_PARAMS, applyDifficultyNoise } from './index';
+import { DIFFICULTY_PARAMS, applyDifficultyNoise, searchBestShot } from './index';
 
 // Time-box for a single plan. The candidate cap already bounds the work; this is
 // a wall-clock backstop so a pathological layout can never stall a caller.
@@ -29,17 +27,15 @@ ctx.onmessage = (event: MessageEvent<BotPlanRequest>): void => {
   const candidates = enumerateCandidates(game, balls, geometry, config, params.candidateCap);
 
   const started = performance.now();
-  let bestShot: ShotInput = candidates[0]?.shot ?? { angle: 0, power: 0.3 };
-  let bestScore = -Infinity;
-  for (const candidate of candidates) {
-    const score = scoreCandidate(candidate, game, balls, geometry, config);
-    if (score > bestScore) {
-      bestScore = score;
-      bestShot = candidate.shot;
-    }
-    if (performance.now() - started > PLAN_BUDGET_MS) break;
-  }
+  const search = searchBestShot(
+    candidates,
+    game,
+    balls,
+    geometry,
+    config,
+    () => performance.now() - started > PLAN_BUDGET_MS,
+  );
 
-  const shot = applyDifficultyNoise(bestShot, params, createPrng(seed));
-  ctx.postMessage({ id, shot });
+  const shot = applyDifficultyNoise(search.shot, params, createPrng(seed));
+  ctx.postMessage({ id, shot, considered: search.considered });
 };

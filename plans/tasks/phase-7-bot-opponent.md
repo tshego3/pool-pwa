@@ -17,8 +17,12 @@
 - [x] Difficulty ordering: over a seeded scenario set, hard pots ≥ medium ≥ easy. (`src/bot/index.test.ts`, 6 scenarios × 10 seeds)
 - [~] Planning completes within the time-box (< ~1.5s) on a mid-range phone; UI stays at 60fps while the worker plans (manual check). Time-box implemented (1.2s wall-clock backstop in `worker.ts`) and the candidate cap bounds the work; on-device 60fps/phone check is pending the Phase 8 game screen.
 - [~] Worker chunk builds under Vite and is listed in the precache manifest (checked again in Phase 9). Verified the worker emits as its own Vite chunk (`worker-*.js`, ~12 kB) and joins the precache manifest when a consumer imports `createBotClient`; no consumer exists until the Phase 8 screen, so final manifest inclusion lands then / is re-checked in Phase 9.
-- [ ] Full manual game vs bot at each difficulty completes without stalls or illegal bot shots. Pending the Phase 8 game screen (no manual play surface yet).
+- [~] Full manual game vs bot at each difficulty completes without stalls or illegal bot shots. **Partial:** `e2e/bot-pacing.spec.ts` drives a real bot turn in the browser at the default difficulty — the worker plans, the turn is paced, and the shot is played without stalling. A **full game to a win/loss at each difficulty is still unverified.**
 
 ## Verification (2026-07-12)
 - `npm test` — 122 passed (13 new bot tests). `npm run lint` — clean. `npm run build` — TypeScript + Vite + SW build all green.
 - Worker chunk emission and precache inclusion confirmed via a temporary `createBotClient` import (reverted): `dist/assets/worker-*.js` present, precache grew from 6 to 7 entries.
+
+## Verification (2026-08-23)
+- `searchBestShot` replaced the private `pickBestShot` and now also reports the search's best-so-far trail, which removed the duplicated scoring loop between `index.ts` and `worker.ts`. Three new cases in `src/bot/index.test.ts` cover the trail and the injected `shouldStop` time-box predicate; the core stays clock-free (`purity.test.ts` unchanged and passing).
+- `e2e/bot-pacing.spec.ts` drives a real bot turn in a browser: it measures that the thinking state holds for at least 1800 ms, and that the aim readout moves through several distinct shots while the bot thinks, with the Shoot button disabled throughout.

@@ -42,7 +42,15 @@ export interface BotPlanRequest {
   readonly seed: number;
 }
 
-export interface BotPlanResponse {
-  readonly id: number;
+// What the planner hands back: the shot to play, plus the trail of shots that
+// were the best found so far as the search progressed. The HUD replays the trail
+// while the bot "thinks", so what the player watches is the real search, not an
+// invented animation.
+export interface BotPlan {
   readonly shot: ShotInput;
+  readonly considered: readonly ShotInput[];
+}
+
+export interface BotPlanResponse extends BotPlan {
+  readonly id: number;
 }

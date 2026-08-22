@@ -15,6 +15,7 @@ import type {
 import type {
   AimResult,
   AimConfig,
+  GuideContact,
   GuideLine,
   GuideOptions,
   PlacementResult,
@@ -33,6 +34,10 @@ export const DEFAULT_AIM: AimConfig = {
 
 export const DEFAULT_GUIDE: Required<GuideOptions> = {
   maxBounces: 0,
+  // 5 s of simulated travel at 120 Hz. This is only a safety bound: a ball
+  // always rests or reaches a rail well inside it, and that is what ends the
+  // predicted path in practice.
+  afterContactSteps: 600,
 };
 
 const MIN_GUIDE_POWER = 0.1;
@@ -85,15 +90,18 @@ const cloneState = (state: PhysicsState): PhysicsState => ({
   })),
 });
 
-const cueEventThisTick = (
+// The first event this tick that involves `id`, if any: a hit, a rail, or a
+// pocket. Used to end both the cue's approach path and each tracked ball's
+// post-contact run.
+const ballEventThisTick = (
   events: readonly PhysicsEvent[],
-  cueId: number,
+  id: number,
 ): PhysicsEvent | undefined =>
   events.find(
     (e) =>
-      (e.type === 'ball-ball' && (e.a === cueId || e.b === cueId)) ||
-      (e.type === 'rail' && e.ball === cueId) ||
-      (e.type === 'pocket' && e.ball === cueId),
+      (e.type === 'ball-ball' && (e.a === id || e.b === id)) ||
+      (e.type === 'rail' && e.ball === id) ||
+      (e.type === 'pocket' && e.ball === id),
   );
 
 // Ghost-ball position: where the cue center sits when it just touches the object
@@ -112,6 +120,58 @@ const ghostBall = (p: Vec2, d: Vec2, o: Vec2, sumR: number): Vec2 => {
   return { x: p.x + d.x * tt, y: p.y + d.y * tt };
 };
 
+// One ball being followed after contact, and the path collected for it. The
+// path is mutated in place: [start, current end], a straight run implied.
+interface TrackedBall {
+  readonly id: number;
+  readonly path: Vec2[];
+}
+
+// Move a tracked ball's end point to where it now is. Returns false once the
+// ball rests, pockets, or hits something, which ends its predicted run.
+const extendTrack = (
+  tracked: TrackedBall,
+  sim: PhysicsState,
+  events: readonly PhysicsEvent[],
+  cfg: PhysicsConfig,
+): boolean => {
+  const b = findBall(sim.balls, tracked.id);
+  if (b === undefined) return false;
+  const end = tracked.path[1];
+  if (end === undefined) tracked.path.push({ x: b.position.x, y: b.position.y });
+  else {
+    end.x = b.position.x;
+    end.y = b.position.y;
+  }
+  return ballEventThisTick(events, tracked.id) === undefined && isMoving(b, cfg);
+};
+
+// Run the simulation on past the contact tick, recording where each tracked ball
+// ends up. Both balls share one simulation so they cannot pass through each
+// other or through the rest of the rack.
+const trackAfterContact = (
+  state: PhysicsState,
+  tracked: readonly TrackedBall[],
+  geo: TableGeometry,
+  cfg: PhysicsConfig,
+  maxSteps: number,
+): void => {
+  const live = tracked.map(() => true);
+  let sim = state;
+  for (let i = 0; i < maxSteps; i++) {
+    if (!live.includes(true)) return;
+    const result = step(sim, geo, cfg);
+    sim = result.state;
+    for (let k = 0; k < tracked.length; k++) {
+      const t = tracked[k];
+      if (live[k] !== true || t === undefined) continue;
+      live[k] = extendTrack(t, sim, result.events, cfg);
+    }
+  }
+};
+
+type ContactCore = Omit<GuideContact, 'cueAfter' | 'objectAfter'>;
+
 // Build the guide contact from the tick that produced the cue's first ball-ball
 // collision. The ghost position is geometric (exact contact point); the
 // deflection directions are read straight from the engine's post-collision
@@ -121,7 +181,7 @@ const contactFromHit = (
   after: PhysicsState,
   cueId: number,
   otherId: number,
-): GuideLine['contact'] => {
+): ContactCore | null => {
   const preCue = findBall(before.balls, cueId);
   const preObj = findBall(before.balls, otherId);
   const postCue = findBall(after.balls, cueId);
@@ -133,6 +193,28 @@ const contactFromHit = (
   const objVel = normalize(postObj.velocity);
   const objectDir = objVel.x === 0 && objVel.y === 0 ? impact : objVel;
   return { ball: otherId, ghost, cueDir: normalize(postCue.velocity), objectDir };
+};
+
+// Complete a contact with the two post-contact paths. Both start at the contact
+// geometry (ghost / object center) rather than the post-tick positions, so the
+// drawn lines meet the ghost ball exactly.
+const afterContact = (
+  core: ContactCore,
+  before: PhysicsState,
+  at: PhysicsState,
+  otherId: number,
+  geo: TableGeometry,
+  cfg: PhysicsConfig,
+  maxSteps: number,
+): GuideContact => {
+  const obj = findBall(before.balls, otherId);
+  const cueTrack: TrackedBall = { id: cfg.cueBallId, path: [{ ...core.ghost }] };
+  const objTrack: TrackedBall = {
+    id: otherId,
+    path: [obj === undefined ? { ...core.ghost } : { ...obj.position }],
+  };
+  trackAfterContact(at, [cueTrack, objTrack], geo, cfg, maxSteps);
+  return { ...core, cueAfter: cueTrack.path, objectAfter: objTrack.path };
 };
 
 // Predict the cue ball's guide line for an aim using the real engine step, so it
@@ -147,6 +229,7 @@ export const predictGuide = (
   opts: GuideOptions = {},
 ): GuideLine => {
   const maxBounces = opts.maxBounces ?? DEFAULT_GUIDE.maxBounces;
+  const afterSteps = opts.afterContactSteps ?? DEFAULT_GUIDE.afterContactSteps;
   let sim = cloneState(state);
   const cue = findBall(sim.balls, cfg.cueBallId);
   if (cue === undefined || cue.pocketed) return { cuePath: [], contact: null };
@@ -161,13 +244,14 @@ export const predictGuide = (
     const before = sim;
     const result = step(before, geo, cfg);
     sim = result.state;
-    const ev = cueEventThisTick(result.events, cfg.cueBallId);
+    const ev = ballEventThisTick(result.events, cfg.cueBallId);
     const after = findBall(sim.balls, cfg.cueBallId);
     if (ev?.type === 'ball-ball') {
       const otherId = ev.a === cfg.cueBallId ? ev.b : ev.a;
-      const contact = contactFromHit(before, sim, cfg.cueBallId, otherId);
-      if (contact) path.push(contact.ghost);
-      return { cuePath: path, contact };
+      const core = contactFromHit(before, sim, cfg.cueBallId, otherId);
+      if (core === null) return { cuePath: path, contact: null };
+      path.push(core.ghost);
+      return { cuePath: path, contact: afterContact(core, before, sim, otherId, geo, cfg, afterSteps) };
     }
     if (after === undefined || ev?.type === 'pocket' || !isMoving(after, cfg)) {
       if (after !== undefined) path.push({ x: after.position.x, y: after.position.y });

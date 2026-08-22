@@ -34,6 +34,13 @@ export interface GuideContact {
   readonly cueDir: Vec2;
   // Unit direction the struck object ball travels after contact.
   readonly objectDir: Vec2;
+  // Where the cue ball goes after contact: the ghost position followed by the
+  // point it stops, pockets, or first hits something. Empty when it stays put
+  // (a full hit kills the cue ball's speed).
+  readonly cueAfter: readonly Vec2[];
+  // Where the struck object ball goes, from its center at contact to the same
+  // kind of terminal point.
+  readonly objectAfter: readonly Vec2[];
 }
 
 // Guide-line prediction: the cue ball's path up to its first contact (or the
@@ -51,6 +58,9 @@ export interface GuideOptions {
   // Number of cushion bounces the cue path may follow before stopping. Default 0
   // (the line stops at the first rail or ball).
   readonly maxBounces?: number;
+  // Tick cap on how far the post-contact prediction follows the cue and object
+  // balls. Each ball stops earlier if it rests, pockets, or hits something.
+  readonly afterContactSteps?: number;
 }
 
 // Why a ball-in-hand placement was rejected.

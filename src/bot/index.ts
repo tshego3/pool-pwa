@@ -51,23 +51,34 @@ export const applyDifficultyNoise = (
     : { angle, power };
 };
 
-const pickBestShot = (
+// Played when there is nothing to enumerate, so the bot always has a legal move.
+const FALLBACK_SHOT: ShotInput = { angle: 0, power: 0.3 };
+
+// Score candidates in order and keep the best. `trail` is every shot that was
+// the best-so-far at some point, in the order the search found them: the
+// deliberation the HUD replays. `shouldStop` lets the Worker time-box the search
+// without this module ever reading a clock, which keeps the core pure.
+export const searchBestShot = (
   candidates: readonly BotCandidate[],
   game: GameState,
   balls: readonly Ball[],
   geometry: TableGeometry,
   config: PhysicsConfig,
-): ShotInput => {
-  let bestShot: ShotInput = candidates[0]?.shot ?? { angle: 0, power: 0.3 };
+  shouldStop: () => boolean = () => false,
+): { readonly shot: ShotInput; readonly considered: readonly ShotInput[] } => {
+  let bestShot: ShotInput = candidates[0]?.shot ?? FALLBACK_SHOT;
   let bestScore = -Infinity;
+  const considered: ShotInput[] = [];
   for (const candidate of candidates) {
     const score = scoreCandidate(candidate, game, balls, geometry, config);
     if (score > bestScore) {
       bestScore = score;
       bestShot = candidate.shot;
+      considered.push(candidate.shot);
     }
+    if (shouldStop()) break;
   }
-  return bestShot;
+  return { shot: bestShot, considered };
 };
 
 export const planShot = (
@@ -80,7 +91,7 @@ export const planShot = (
 ): ShotInput => {
   const params = DIFFICULTY_PARAMS[difficulty];
   const candidates = enumerateCandidates(game, balls, geometry, config, params.candidateCap);
-  const best = pickBestShot(candidates, game, balls, geometry, config);
+  const best = searchBestShot(candidates, game, balls, geometry, config).shot;
   return applyDifficultyNoise(best, params, createPrng(seed));
 };
 

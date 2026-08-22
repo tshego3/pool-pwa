@@ -131,6 +131,88 @@ describe('predictGuide', () => {
     expect(end?.x).toBeLessThan(0.3);
   });
 
+  it('predicts where each ball travels after the hit, matching the real shot', () => {
+    // Straight-on hit down the table with room for the object ball to run.
+    const objStart = { x: 0.9, y: 0.5 };
+    const state: PhysicsState = { tick: 0, balls: [ball(0, 0.3, 0.5), ball(1, objStart.x, objStart.y)] };
+    const aim = { angle: 0, power: 0.2 };
+    const contact = predictGuide(state, aim, table, DEFAULT_PHYSICS).contact;
+    expect(contact).not.toBeNull();
+    if (contact === null) return;
+    // The object path starts at the object ball and runs along the impact line.
+    expect(contact.objectAfter.length).toBe(2);
+    const start = contact.objectAfter[0];
+    const end = contact.objectAfter[1];
+    expect(start).toEqual(objStart);
+    if (start === undefined || end === undefined) return;
+    const travel = Math.hypot(end.x - start.x, end.y - start.y);
+    expect(travel).toBeGreaterThan(r);
+    const dir = { x: (end.x - start.x) / travel, y: (end.y - start.y) / travel };
+    expect(dir.x).toBeCloseTo(contact.objectDir.x, 2);
+    expect(dir.y).toBeCloseTo(contact.objectDir.y, 2);
+    // The engine puts the real object ball where the guide said it would go.
+    const run = simulate(state, aim, table, DEFAULT_PHYSICS);
+    const obj = run.finalState.balls.find((b) => b.id === 1);
+    expect(obj?.position.x).toBeCloseTo(end.x, 2);
+    expect(obj?.position.y).toBeCloseTo(end.y, 2);
+    // The cue path starts at the ghost ball, wherever the stun leaves it.
+    expect(contact.cueAfter[0]).toEqual(contact.ghost);
+  });
+
+  it('sends the cue ball down its own line on a cut, away from the object ball', () => {
+    // Cut to one side: the cue deflects along the tangent, the object along the
+    // impact line, so the two predicted paths must diverge.
+    const state: PhysicsState = { tick: 0, balls: [ball(0, 0.3, 0.46), ball(1, 0.9, 0.5)] };
+    const contact = predictGuide(state, { angle: 0, power: 0.5 }, table, DEFAULT_PHYSICS).contact;
+    expect(contact).not.toBeNull();
+    if (contact === null) return;
+    expect(contact.cueAfter.length).toBe(2);
+    const from = contact.cueAfter[0];
+    const to = contact.cueAfter[1];
+    if (from === undefined || to === undefined) return;
+    const len = Math.hypot(to.x - from.x, to.y - from.y);
+    expect(len).toBeGreaterThan(r);
+    const dir = { x: (to.x - from.x) / len, y: (to.y - from.y) / len };
+    expect(dir.x).toBeCloseTo(contact.cueDir.x, 1);
+    expect(dir.y).toBeCloseTo(contact.cueDir.y, 1);
+    // Tangent and impact lines are perpendicular for an equal-mass elastic hit.
+    const alignment = contact.cueDir.x * contact.objectDir.x + contact.cueDir.y * contact.objectDir.y;
+    expect(Math.abs(alignment)).toBeLessThan(0.15);
+  });
+
+  it('stops the predicted paths where the balls stop, never off the table', () => {
+    const state: PhysicsState = { tick: 0, balls: [ball(0, 0.3, 0.5), ball(1, 0.9, 0.5)] };
+    const contact = predictGuide(state, { angle: 0, power: 1 }, table, DEFAULT_PHYSICS).contact;
+    expect(contact).not.toBeNull();
+    if (contact === null) return;
+    for (const p of [...contact.cueAfter, ...contact.objectAfter]) {
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThanOrEqual(table.width);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y).toBeLessThanOrEqual(table.height);
+    }
+  });
+
+  it('follows cushions when maxBounces allows it, and stops at the first rail otherwise', () => {
+    // Up-table at 60 degrees from the head spot: clear of the rack and of the
+    // side pocket, so the line reaches a cushion and nothing else.
+    const state: PhysicsState = { tick: 0, balls: rackEightBall() };
+    const aim = { angle: -Math.PI / 3, power: 0.35 };
+    const straight = predictGuide(state, aim, table, DEFAULT_PHYSICS, { maxBounces: 0 });
+    expect(straight.cuePath).toHaveLength(2);
+    expect(straight.contact).toBeNull();
+    const bounced = predictGuide(state, aim, table, DEFAULT_PHYSICS, { maxBounces: 3 });
+    expect(bounced.cuePath.length).toBeGreaterThan(2);
+    // The line up to the first cushion is the same either way.
+    expect(bounced.cuePath.slice(0, 2)).toEqual(straight.cuePath);
+    for (const p of bounced.cuePath) {
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThanOrEqual(table.width);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y).toBeLessThanOrEqual(table.height);
+    }
+  });
+
   it('is deterministic and consistent with simulate for a rack break', () => {
     const state: PhysicsState = { tick: 0, balls: rackEightBall() };
     const aim = { angle: 0, power: 1 };

@@ -107,6 +107,7 @@ export function PowerControl({
         <Text size="xs" c="dimmed">Power</Text>
         <Box 
           ref={containerRef}
+          data-testid="power-track"
           onPointerDown={(e) => {
             if (disabled) return;
             setIsDragging(true);

@@ -9,7 +9,8 @@ The game is built on a custom 2D physics engine and Canvas 2D rendering, with no
 - **Solo play vs a local bot** — the opponent is a pure-TypeScript shot planner that reuses the deterministic physics engine as its simulator (no network, no ML runtime). Easy / medium / hard difficulty tiers.
 - **Full 8-ball ruleset** — break legality, open table, solids/stripes assignment, fouls → ball-in-hand, and 8-ball win/loss handling.
 - **Fully offline PWA** — installable, with the entire app shell (code, icons, fonts, sounds) precached by the service worker.
-- **Drag-to-aim** — pointer/touch aiming with a ghost-ball guide line, plus HUD fine-tune and power controls for accessibility.
+- **Drag-to-aim with shot prediction** — pointer/touch aiming with a ghost-ball guide line that also shows where both balls travel after contact: the struck object ball's path and the cue ball's deflection, each traced with the real engine until the ball rests, pockets, or hits something. Optional cushion-following is a setting. HUD fine-tune and power controls cover accessibility.
+- **A bot that plays like an opponent** — the bot's turn is paced rather than instant, and while it thinks the aim controls and guide line step through the shots its search actually weighed before settling on the one it plays. The controls stay disabled throughout, so the display is a read-out and never a handover.
 - **Persistence** — resume a saved game, and track games/wins, pots, fouls, and streaks per difficulty (stored in IndexedDB).
 - **Deterministic engine** — seeded PRNG throughout, enabling replay fixtures, exact-match tests, and reproducible bot behavior.
 
@@ -20,7 +21,8 @@ The game is built on a custom 2D physics engine and Canvas 2D rendering, with no
 - **Mantine 9** for the HUD/UI chrome
 - **vite-plugin-pwa** (injectManifest + workbox-precaching) for the offline service worker
 - **idb** for IndexedDB persistence
-- **Vitest** for tests (physics, rules, and bot logic are test-first)
+- **Vitest** for unit tests (physics, rules, and bot logic are test-first)
+- **Playwright** for end-to-end tests that drive the real app in a browser
 
 ## Getting Started
 
@@ -33,6 +35,12 @@ npm run dev      # start the Vite dev server
 
 Then open the URL Vite prints (the app is served under the `/pool-pwa/` base path).
 
+To run the end-to-end suite you also need the browser Playwright drives, which is a one-time download:
+
+```bash
+npx playwright install chromium
+```
+
 ## Scripts
 
 | Script | Description |
@@ -41,8 +49,9 @@ Then open the URL Vite prints (the app is served under the `/pool-pwa/` base pat
 | `npm run build` | Type-check (`tsc -b`) and build for production |
 | `npm run preview` | Preview the production build locally |
 | `npm run lint` | Lint `src/` with ESLint |
-| `npm test` | Run the test suite once (Vitest) |
-| `npm run test:watch` | Run tests in watch mode |
+| `npm test` | Run the unit suite once (Vitest) |
+| `npm run test:watch` | Run unit tests in watch mode |
+| `npm run test:e2e` | Run the end-to-end suite (Playwright; starts the dev server itself) |
 | `npm run deploy` | Publish `dist/` to GitHub Pages |
 
 ## Architecture
@@ -59,8 +68,17 @@ src/types  →  src/db  →  src/engine / src/rules / src/bot  →  src/game  �
 - **`src/game`** — the imperative facade (loop, input, aiming, controller) that glues input → simulate → rules; the only bridge between React and the engine.
 - **`src/render`** — Canvas 2D rendering (table, balls, guide line) and the table↔pixel transform.
 - **`src/hooks` / `src/screens` / `src/components`** — Mantine-based UI. React receives only shot-boundary snapshots, never per-frame state.
+- **`e2e/`** — Playwright specs plus the shared helpers that drive the app the way a player does (visible controls only).
 
 The engine and rules layers are pure: no DOM, React, or network imports, and no `Math.random`/`Date.now` (seeded PRNG only). See the design docs and per-phase task breakdown in [plans/](plans/).
+
+## Testing
+
+The two suites cover different things and neither replaces the other.
+
+**Vitest (`npm test`)** owns everything pure and deterministic: physics functions, rules transitions, bot planning, aiming math, and the HUD copy helpers. Tests live beside the code they cover. Purity is itself tested — `src/engine`, `src/rules`, and `src/bot` are grep-checked for DOM, React, clock, and network references.
+
+**Playwright (`npm run test:e2e`)** owns what only a real browser can show: the canvas renderer, the rAF loop, the bot Web Worker, and IndexedDB running together. The specs assert on rendered frames and on real elapsed time, so they catch things a unit test cannot — that a setting reaches the canvas rather than only IndexedDB, and that the bot's turn is actually paced. Playwright starts the dev server itself; each spec gets a clean browser context, so there is never a stale saved game or settings record.
 
 ## Offline Guarantee
 

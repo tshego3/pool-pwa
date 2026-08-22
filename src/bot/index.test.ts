@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { planShot } from './index';
+import { DIFFICULTY_PARAMS, planShot, searchBestShot } from './index';
+import { enumerateCandidates } from './candidates';
 import { createEightBallTable, rackEightBall } from '../engine/tables/eightBall';
 import { DEFAULT_PHYSICS } from '../engine/config';
 import { simulate } from '../engine/simulate';
@@ -147,5 +148,39 @@ describe('planShot', () => {
     expect(medium).toBeGreaterThanOrEqual(easy);
     // Sanity: hard actually makes the shots, and noise actually degrades easy.
     expect(hard).toBeGreaterThan(easy);
+  });
+});
+
+describe('searchBestShot', () => {
+  const candidatesFor = (tier: Tier) =>
+    enumerateCandidates(openState(), rackEightBall(), geometry, config, DIFFICULTY_PARAMS[tier].candidateCap);
+
+  it('reports the shots that were best-so-far, ending on the one it returns', () => {
+    const candidates = candidatesFor('hard');
+    const result = searchBestShot(candidates, openState(), rackEightBall(), geometry, config);
+    expect(result.considered.length).toBeGreaterThan(0);
+    // The trail is the search improving on itself, so it ends where it landed.
+    expect(result.considered[result.considered.length - 1]).toEqual(result.shot);
+    // Every reported shot is one of the enumerated candidates, never invented.
+    const known = candidates.map((c) => c.shot);
+    for (const shot of result.considered) expect(known).toContainEqual(shot);
+  });
+
+  it('is deterministic and never longer than the candidate list', () => {
+    const candidates = candidatesFor('medium');
+    const a = searchBestShot(candidates, openState(), rackEightBall(), geometry, config);
+    const b = searchBestShot(candidates, openState(), rackEightBall(), geometry, config);
+    expect(a).toEqual(b);
+    expect(a.considered.length).toBeLessThanOrEqual(candidates.length);
+  });
+
+  it('stops early when the caller says to, still returning a playable shot', () => {
+    const candidates = candidatesFor('hard');
+    // Stop after the very first candidate is scored.
+    const stopped = searchBestShot(candidates, openState(), rackEightBall(), geometry, config, () => true);
+    const full = searchBestShot(candidates, openState(), rackEightBall(), geometry, config);
+    expect(stopped.considered).toHaveLength(1);
+    expect(stopped.shot.power).toBeGreaterThan(0);
+    expect(full.considered.length).toBeGreaterThanOrEqual(stopped.considered.length);
   });
 });

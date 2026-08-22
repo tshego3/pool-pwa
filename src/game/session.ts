@@ -19,8 +19,8 @@ import type {
   Vec2,
 } from '../types/physics';
 import type { GameState, Seat } from '../types/rules';
-import type { AimResult, PlacementResult } from '../types/aiming';
-import type { Difficulty } from '../types/bot';
+import type { AimResult, GuideOptions, PlacementResult } from '../types/aiming';
+import type { BotPlan, Difficulty } from '../types/bot';
 import type { GameResult } from '../types/persistence';
 import { step } from '../engine/step';
 import { isMoving } from '../engine/friction';
@@ -35,12 +35,15 @@ import {
 import { createBotClient, type BotClient } from './botClient';
 import { predictGuide, validateCuePlacement } from './aiming';
 
-// Straight cue -> target aiming aid the renderer draws (structurally matches the
-// renderer's GuideOverlay so the game layer needs no render import).
+// The aiming aid the renderer draws: the cue's approach, the ghost ball at
+// impact, and where each ball is predicted to travel from there. Structurally
+// matches the renderer's GuideOverlay so the game layer needs no render import.
 export interface GuideAid {
-  readonly from: Vec2;
-  readonly to: Vec2;
+  // Cue-ball approach, including a vertex at every cushion the line follows.
+  readonly path: readonly Vec2[];
   readonly impact?: Vec2;
+  readonly cueAfter?: readonly Vec2[];
+  readonly objectAfter?: readonly Vec2[];
 }
 
 // The shot-boundary snapshot the HUD subscribes to. `thinking`/`animating` are
@@ -51,6 +54,10 @@ export interface GameView {
   readonly balls: readonly Ball[];
   readonly thinking: boolean;
   readonly animating: boolean;
+  // The bot's planned shot while it addresses the ball, else null. The HUD
+  // mirrors it so the player can watch what the bot is about to do; it is
+  // display only, and aiming stays locked for the whole bot turn.
+  readonly botAim: AimResult | null;
 }
 
 export interface GameSessionOptions {
@@ -88,8 +95,9 @@ export interface GameSession {
   validatePlacement(pos: Vec2): PlacementResult;
   previewPlacement(pos: Vec2): void;
   commitPlacement(pos: Vec2): void;
-  // Guide-line aid for an aim, or null when there is nothing to draw.
-  computeGuide(aim: AimResult): GuideAid | null;
+  // Guide-line aid for an aim, or null when there is nothing to draw. `opts`
+  // carries the user's guide settings (how many cushions the line follows).
+  computeGuide(aim: AimResult, opts?: GuideOptions): GuideAid | null;
   subscribe(listener: () => void): () => void;
   getView(): GameView;
   dispose(): void;
@@ -130,6 +138,18 @@ const launchCue = (state: PhysicsState, shot: ShotInput, cfg: PhysicsConfig): vo
 const anyMoving = (state: PhysicsState, cfg: PhysicsConfig): boolean =>
   state.balls.some((b) => isMoving(b, cfg));
 
+// The worker plans in a few milliseconds, so without pacing the bot fires the
+// instant the player's balls stop, which reads as a machine rather than an
+// opponent. The turn is spread over two beats: the visible "thinking" state is
+// held for at least BOT_MIN_THINK_MS, then the bot settles over the shot for
+// BOT_ADDRESS_MS before the cue strikes.
+const BOT_MIN_THINK_MS = 2200;
+const BOT_ADDRESS_MS = 900;
+// How many of the shots the search weighed are replayed across the thinking
+// beat. These are discrete steps a few hundred ms apart, not a per-frame
+// animation, so the HUD still re-renders only a handful of times per turn.
+const BOT_DELIBERATION_STEPS = 5;
+
 // Floor power used only for the guide prediction, so the aim line stays on the
 // table the whole time the player lines up a shot (a zero-power aim would
 // otherwise predict a cue ball that never moves). Real shot power is untouched.
@@ -145,10 +165,21 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
 
   const bot: BotClient = createBotClient();
   const listeners = new Set<Listener>();
+  const timers = new Set<ReturnType<typeof setTimeout>>();
   let disposed = false;
+
+  // Deferred work that must not fire after the screen unmounts.
+  const later = (ms: number, fn: () => void): void => {
+    const id = setTimeout(() => {
+      timers.delete(id);
+      if (!disposed) fn();
+    }, ms);
+    timers.add(id);
+  };
 
   let animating = false;
   let thinking = false;
+  let botAim: AimResult | null = null;
   let pendingShot: ShotInput | null = null;
   let pendingPlacement: Vec2 | null = null;
 
@@ -173,7 +204,7 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
   });
 
   function publish(): void {
-    view = { game: controller.game(), balls: controller.balls(), thinking, animating };
+    view = { game: controller.game(), balls: controller.balls(), thinking, animating, botAim };
     for (const l of listeners) l();
   }
 
@@ -208,6 +239,7 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
 
   function beginShot(shot: ShotInput): void {
     pendingShot = shot;
+    botAim = null;
     const start = snapshotPhysics(controller.balls());
     launchCue(start, shot, config);
     prev = start;
@@ -268,23 +300,51 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
     options.onPersist?.({ game, balls: controller.balls() });
   }
 
+  // Replay the tail of the bot's search through the HUD while it "thinks": the
+  // aim controls and the guide line step through the shots it actually weighed,
+  // ending on the one it will play. Display only - every control stays disabled
+  // for the whole bot turn and the player's own aim is never written.
+  function showDeliberation(plan: BotPlan, holdMs: number, done: () => void): void {
+    const trail = plan.considered.slice(-BOT_DELIBERATION_STEPS);
+    const gap = trail.length > 0 ? holdMs / trail.length : 0;
+    trail.forEach((shot, i) => {
+      later(Math.round(gap * i), () => {
+        botAim = { angle: shot.angle, power: shot.power };
+        publish();
+      });
+    });
+    later(holdMs, done);
+  }
+
   function maybeStartBotTurn(): void {
     const game = controller.game();
     if (disposed || game.winner !== null || game.turn !== 'bot') return;
     thinking = true;
     publish();
     const seed = options.seed + game.pocketed.length;
+    const startedAt = Date.now();
     bot
       .plan({ game, balls: controller.balls(), geometry, config, difficulty: options.difficulty, seed })
-      .then((shot) => {
+      .then((plan) => {
         if (disposed) return;
-        thinking = false;
-        beginShot(shot);
+        const elapsed = Date.now() - startedAt;
+        showDeliberation(plan, Math.max(BOT_MIN_THINK_MS - elapsed, 0), () => {
+          // Deliberation is over. The HUD drops back to a plain "Bot's turn" and
+          // settles on the shot it will play. When the bot has ball in hand,
+          // show the cue where it will actually play from.
+          const shot = plan.shot;
+          thinking = false;
+          botAim = { angle: shot.angle, power: shot.power };
+          if (shot.cuePlacement !== undefined) setLiveCue(shot.cuePlacement);
+          publish();
+          later(BOT_ADDRESS_MS, () => beginShot(shot));
+        });
       })
       .catch(() => {
         // Planning failed: leave the turn idle rather than crash. Logged so the
         // stall is diagnosable; the player can restart from the menu.
         thinking = false;
+        botAim = null;
         publish();
         console.error('bot planning failed; the game cannot continue this turn');
       });
@@ -296,7 +356,7 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
   };
 
   syncRenderToController();
-  view = { game: controller.game(), balls: controller.balls(), thinking, animating };
+  view = { game: controller.game(), balls: controller.balls(), thinking, animating, botAim };
 
   return {
     geometry,
@@ -335,18 +395,23 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
       pendingPlacement = { x: pos.x, y: pos.y };
       setLiveCue(pos);
     },
-    computeGuide: (aim) => {
-      if (!canAim()) return null;
-      const preview = { angle: aim.angle, power: Math.max(aim.power, GUIDE_PREVIEW_POWER) };
-      const guide = predictGuide(curr, preview, geometry, config);
+    computeGuide: (aim, opts) => {
+      // While the bot addresses the ball the line belongs to its planned shot,
+      // not to the player's stored aim.
+      const source = botAim ?? (canAim() ? aim : null);
+      if (source === null) return null;
+      const preview = { angle: source.angle, power: Math.max(source.power, GUIDE_PREVIEW_POWER) };
+      const guide = predictGuide(curr, preview, geometry, config, opts);
       const path = guide.cuePath;
       if (path.length < 2) return null;
-      const from = path[0];
-      const to = path[path.length - 1];
-      if (from === undefined || to === undefined) return null;
-      return guide.contact !== null
-        ? { from, to, impact: guide.contact.ghost }
-        : { from, to };
+      const contact = guide.contact;
+      if (contact === null) return { path };
+      return {
+        path,
+        impact: contact.ghost,
+        cueAfter: contact.cueAfter,
+        objectAfter: contact.objectAfter,
+      };
     },
     subscribe: (listener) => {
       listeners.add(listener);
@@ -355,6 +420,8 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
     getView: () => view,
     dispose: () => {
       disposed = true;
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
       listeners.clear();
       bot.terminate();
     },

@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -22,6 +22,10 @@ export default defineConfig({
     }),
   ],
   base: '/pool-pwa/',
+  // Vitest owns src/**; e2e/ is Playwright's and must not be collected here.
+  test: {
+    exclude: ['e2e/**', '**/node_modules/**', '**/dist/**'],
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,

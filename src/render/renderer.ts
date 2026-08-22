@@ -19,11 +19,17 @@ const TAU = Math.PI * 2;
 // gets a stable array, never a per-frame allocation.
 const GUIDE_DASH: readonly number[] = [0.02, 0.02];
 
-// A straight aiming aid: cue -> target, with an optional ghost ball at impact.
+// The aiming aid: the cue's approach (cue -> target), an optional ghost ball at
+// impact, and the predicted travel of both balls after that impact.
 export interface GuideOverlay {
-  readonly from: Vec2;
-  readonly to: Vec2;
+  // Cue-ball approach: the launch point, a vertex at each cushion bounce, then
+  // the terminal point. A straight run between vertices is implied.
+  readonly path: readonly Vec2[];
   readonly impact?: Vec2;
+  // Cue-ball deflection path, starting at the ghost ball.
+  readonly cueAfter?: readonly Vec2[];
+  // Struck object ball's path, starting at its center.
+  readonly objectAfter?: readonly Vec2[];
 }
 
 export interface RendererOptions {
@@ -40,11 +46,35 @@ export interface Renderer {
   resize(): void;
   // Set or clear the aiming guide overlay.
   setGuide(guide: GuideOverlay | null): void;
+  // Swap the table finish (a user setting). Redraws the static layer; the game
+  // in progress is untouched.
+  setPalette(next: TablePalette): void;
   // Current table<->pixel transform (null before the first measure). Exposed so
   // the input controller can convert pointer pixels to table units.
   getTransform(): Transform | null;
   dispose(): void;
 }
+
+// Stroke a predicted path. Under two points means the ball does not travel
+// (a full hit stuns the cue ball dead), so nothing is drawn.
+const strokePath = (
+  ctx: CanvasRenderingContext2D,
+  points: readonly Vec2[],
+  color: string,
+  width: number,
+): void => {
+  const first = points[0];
+  if (points.length < 2 || first === undefined) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(first.x, first.y);
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+    if (p !== undefined) ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+};
 
 const drawGuide = (
   ctx: CanvasRenderingContext2D,
@@ -52,13 +82,8 @@ const drawGuide = (
   radius: number,
   palette: TablePalette,
 ): void => {
-  ctx.strokeStyle = palette.guide;
-  ctx.lineWidth = radius * 0.18;
   ctx.setLineDash(GUIDE_DASH as number[]);
-  ctx.beginPath();
-  ctx.moveTo(guide.from.x, guide.from.y);
-  ctx.lineTo(guide.to.x, guide.to.y);
-  ctx.stroke();
+  strokePath(ctx, guide.path, palette.guide, radius * 0.18);
   ctx.setLineDash([]);
   if (guide.impact === undefined) return;
   ctx.strokeStyle = palette.guideImpact;
@@ -66,6 +91,16 @@ const drawGuide = (
   ctx.beginPath();
   ctx.arc(guide.impact.x, guide.impact.y, radius, 0, TAU);
   ctx.stroke();
+  // Where each ball goes after the hit. Round caps so the lines read as cues
+  // leaving the ghost ball rather than as table markings.
+  ctx.lineCap = 'round';
+  if (guide.cueAfter !== undefined) {
+    strokePath(ctx, guide.cueAfter, palette.guideCue, radius * 0.14);
+  }
+  if (guide.objectAfter !== undefined) {
+    strokePath(ctx, guide.objectAfter, palette.guideObject, radius * 0.2);
+  }
+  ctx.lineCap = 'butt';
 };
 
 export const createRenderer = (
@@ -83,7 +118,7 @@ export const createRenderer = (
     throw new Error('renderer: offscreen 2D context is unavailable');
   }
 
-  const palette = options.palette ?? DEFAULT_TABLE_PALETTE;
+  let palette = options.palette ?? DEFAULT_TABLE_PALETTE;
   const rail = options.railWidth ?? DEFAULT_RAIL_WIDTH;
   const numberOffset = ballNumberOffset(geo.ballRadius);
   let transform: Transform | null = null;
@@ -124,6 +159,12 @@ export const createRenderer = (
     resize: managed.measure,
     setGuide: (next) => {
       guide = next;
+    },
+    setPalette: (next) => {
+      if (next === palette) return;
+      palette = next;
+      const t = transform;
+      if (t !== null) redrawStatic(t);
     },
     getTransform: managed.current,
     dispose: managed.dispose,
