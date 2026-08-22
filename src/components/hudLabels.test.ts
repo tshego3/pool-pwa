@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { ballKind, turnLabel, groupLabel, winnerLabel, foulReasonLabel } from './hudLabels';
+import {
+  ballKind,
+  turnLabel,
+  groupLabel,
+  groupShortLabel,
+  winnerLabel,
+  foulReasonLabel,
+} from './hudLabels';
 
 describe('hudLabels', () => {
   it('classifies ball ids by kind', () => {
@@ -41,5 +48,13 @@ describe('hudLabels', () => {
     const messages = reasons.map(foulReasonLabel);
     for (const m of messages) expect(m.length).toBeGreaterThan(0);
     expect(new Set(messages).size).toBe(reasons.length);
+  });
+
+  it('shortens group names for the seat chips, keeping the long form separate', () => {
+    expect(groupShortLabel('solids')).toBe('Solids');
+    expect(groupShortLabel('stripes')).toBe('Stripes');
+    // The long form spells out the open table; the chip form must stay compact.
+    expect(groupLabel(null)).toBe('Open table');
+    expect(groupShortLabel(null)).toBe('Open');
   });
 });

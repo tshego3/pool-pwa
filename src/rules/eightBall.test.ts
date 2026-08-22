@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createInitialState, reduce } from './eightBall';
+import { createInitialState, legalTargets, reduce } from './eightBall';
 import type { BallGroup, GameState, Seat, ShotOutcome } from '../types/rules';
 
 // Build a ShotOutcome with legal-shot defaults, overriding only what a case cares
@@ -282,5 +282,45 @@ describe('reduce - property: valid state in, valid state out', () => {
         if (before.phase === 'finished') expect(state).toBe(before);
       }
     }
+  });
+});
+
+describe('legalTargets', () => {
+  const withGroups = (over: Partial<GameState>): GameState => ({
+    ...createInitialState('player'),
+    ...over,
+  });
+
+  it('returns null on an open table, where any ball but the 8 is fair game', () => {
+    expect(legalTargets(createInitialState('player'), 'player')).toBeNull();
+    expect(legalTargets(createInitialState('player'), 'bot')).toBeNull();
+  });
+
+  it('returns the seat own group, minus what is already down', () => {
+    const state = withGroups({
+      groups: { player: 'solids', bot: 'stripes' },
+      pocketed: [1, 3, 10],
+    });
+    expect(legalTargets(state, 'player')).toEqual([2, 4, 5, 6, 7]);
+    expect(legalTargets(state, 'bot')).toEqual([9, 11, 12, 13, 14, 15]);
+  });
+
+  it('returns the 8 alone once a seat has cleared its group', () => {
+    const state = withGroups({
+      groups: { player: 'solids', bot: 'stripes' },
+      pocketed: [1, 2, 3, 4, 5, 6, 7],
+    });
+    expect(legalTargets(state, 'player')).toEqual([8]);
+    // The opponent is still on its own balls.
+    expect(legalTargets(state, 'bot')).toEqual([9, 10, 11, 12, 13, 14, 15]);
+  });
+
+  it('never offers the 8 while the seat still has group balls up', () => {
+    const state = withGroups({
+      groups: { player: 'stripes', bot: 'solids' },
+      pocketed: [9, 10, 11, 12, 13, 14],
+    });
+    expect(legalTargets(state, 'player')).toEqual([15]);
+    expect(legalTargets(state, 'player')).not.toContain(8);
   });
 });

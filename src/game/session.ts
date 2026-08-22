@@ -32,6 +32,7 @@ import {
   type ControllerSnapshot,
   type ShotResolution,
 } from './controller';
+import { legalTargets } from '../rules/eightBall';
 import { createBotClient, type BotClient } from './botClient';
 import { predictGuide, validateCuePlacement } from './aiming';
 
@@ -44,6 +45,7 @@ export interface GuideAid {
   readonly impact?: Vec2;
   readonly cueAfter?: readonly Vec2[];
   readonly objectAfter?: readonly Vec2[];
+  readonly blocked?: boolean;
 }
 
 // The shot-boundary snapshot the HUD subscribes to. `thinking`/`animating` are
@@ -350,6 +352,15 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
       });
   }
 
+  // Whether the shooter may legally strike this ball first. On an open table
+  // every ball but the 8 is fair game; once groups are assigned it is the
+  // seat's own remaining balls, or the 8 after those are cleared.
+  const isLegalFirstContact = (ballId: number): boolean => {
+    const game = controller.game();
+    const targets = legalTargets(game, game.turn);
+    return targets === null ? ballId !== 8 : targets.includes(ballId);
+  };
+
   const canAim = (): boolean => {
     const game = controller.game();
     return !animating && !thinking && game.winner === null && game.turn === 'player';
@@ -406,6 +417,10 @@ export const createGameSession = (options: GameSessionOptions): GameSession => {
       if (path.length < 2) return null;
       const contact = guide.contact;
       if (contact === null) return { path };
+      // Aiming at a ball the shooter may not hit gets no help: the line goes
+      // faint and the prediction is withheld, so an illegal shot looks wrong
+      // before it is taken.
+      if (!isLegalFirstContact(contact.ball)) return { path, blocked: true };
       return {
         path,
         impact: contact.ghost,

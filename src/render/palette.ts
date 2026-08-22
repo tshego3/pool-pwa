@@ -43,6 +43,10 @@ export interface TablePalette extends FeltColors {
   readonly guideObject: string;
   // Predicted cue-ball deflection after contact.
   readonly guideCue: string;
+  // Approach line when the cue would first strike a ball the shooter may not
+  // hit. Faint on purpose: the aim visibly stops working, which is how the
+  // player learns which balls are theirs.
+  readonly guideBlocked: string;
 }
 
 // Ball suit colors are constant across every felt finish; only the felt/wood
@@ -74,6 +78,7 @@ const makePalette = (felt: FeltColors): TablePalette => ({
   guideImpact: 'rgba(245, 245, 245, 0.5)',
   guideObject: 'rgba(245, 245, 245, 0.95)',
   guideCue: 'rgba(245, 245, 245, 0.55)',
+  guideBlocked: 'rgba(245, 245, 245, 0.28)',
 });
 
 export const TABLE_PALETTES = {

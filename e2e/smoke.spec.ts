@@ -15,6 +15,6 @@ test('a new game renders the table and hands the first turn to the player', asyn
   await openMenu(page);
   const canvas = await startGame(page);
   expect(await canvasIsBlank(canvas)).toBe(false);
-  await expect(page.getByText('Your turn')).toBeVisible();
+  await expect(page.getByTestId('seat-player')).toHaveAttribute('data-active', 'true');
   await expect(page.getByRole('button', { name: 'Shoot' })).toBeDisabled();
 });

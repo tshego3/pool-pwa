@@ -27,6 +27,14 @@ export const groupLabel = (group: BallGroup | null): string => {
   return 'Open table';
 };
 
+// Compact form for the seat chips, where "Open table" is too long to sit beside
+// a seat name. groupLabel stays the long form used for accessible names.
+export const groupShortLabel = (group: BallGroup | null): string => {
+  if (group === 'solids') return 'Solids';
+  if (group === 'stripes') return 'Stripes';
+  return 'Open';
+};
+
 export const winnerLabel = (winner: Seat): string =>
   winner === 'player' ? 'You win' : 'Bot wins';
 

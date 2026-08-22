@@ -61,6 +61,18 @@ const seatOnEight = (
 
 // The starting rack: player breaks by default. Kept here so the rules layer owns
 // the initial GameState (the engine owns the ball positions via rackEightBall).
+// The object balls a seat must hit first on its next shot: its remaining group
+// balls, or the 8 once that group is cleared. Null on an open table, where any
+// ball except the 8 is a legal first contact. Built from the same helpers the
+// foul check uses, so the two can never disagree. The HUD marks these on the
+// table so the player can see which balls are theirs.
+export const legalTargets = (state: GameState, seat: Seat): readonly number[] | null => {
+  const group = state.groups[seat];
+  if (group === null) return null;
+  if (seatOnEight(state.groups, state.pocketed, seat)) return [EIGHT];
+  return groupIds(group).filter((id) => !state.pocketed.includes(id));
+};
+
 export const createInitialState = (breaker: Seat = 'player'): GameState => ({
   phase: 'break',
   turn: breaker,

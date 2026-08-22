@@ -30,6 +30,10 @@ export interface GuideOverlay {
   readonly cueAfter?: readonly Vec2[];
   // Struck object ball's path, starting at its center.
   readonly objectAfter?: readonly Vec2[];
+  // The cue would first strike a ball the shooter may not hit. Only the faint
+  // approach is drawn: no ghost ball and no prediction, because the shot is a
+  // foul and there is nothing worth predicting.
+  readonly blocked?: boolean;
 }
 
 export interface RendererOptions {
@@ -82,10 +86,11 @@ const drawGuide = (
   radius: number,
   palette: TablePalette,
 ): void => {
+  const blocked = guide.blocked === true;
   ctx.setLineDash(GUIDE_DASH as number[]);
-  strokePath(ctx, guide.path, palette.guide, radius * 0.18);
+  strokePath(ctx, guide.path, blocked ? palette.guideBlocked : palette.guide, radius * 0.18);
   ctx.setLineDash([]);
-  if (guide.impact === undefined) return;
+  if (blocked || guide.impact === undefined) return;
   ctx.strokeStyle = palette.guideImpact;
   ctx.lineWidth = radius * 0.08;
   ctx.beginPath();

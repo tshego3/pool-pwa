@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ActionIcon, Box, Group, Paper, Stack, Text } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useMediaQuery, useReducedMotion } from '@mantine/hooks';
 import { IconArrowLeft } from '@tabler/icons-react';
 import { useSettings } from '../hooks/useSettings';
 import type { AimResult, GuideOptions } from '../types/aiming';
@@ -22,7 +22,6 @@ import { createRenderer, type Renderer } from '../render/renderer';
 import { DEFAULT_TABLE_PALETTE_KEY, tablePalette } from '../render/palette';
 import { useGameState } from '../hooks/useGameState';
 import { TurnIndicator } from '../components/TurnIndicator';
-import { GroupIndicator } from '../components/GroupIndicator';
 import { FoulBanner } from '../components/FoulBanner';
 import { AlertWrapper } from '../components/AlertWrapper';
 import { PocketedTray } from '../components/PocketedTray';
@@ -167,6 +166,8 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
   const canAim = game !== null && !busy && game.winner === null && game.turn === 'player';
   const gameActive = game !== null && game.winner === null;
   const isWide = useMediaQuery('(min-width: 48em)') === true;
+  // Turn changes fade rather than snap, unless the viewer asked for less motion.
+  const fade = useReducedMotion() === true ? undefined : '160ms ease-out';
 
   return (
     <Box
@@ -195,10 +196,13 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
           >
             <IconArrowLeft size={22} />
           </ActionIcon>
-          <Stack gap={4} align="flex-end">
-            {game !== null ? <TurnIndicator turn={game.turn} thinking={view?.thinking === true} /> : null}
-            {game !== null ? <GroupIndicator groups={game.groups} /> : null}
-          </Stack>
+          {game !== null ? (
+            <TurnIndicator
+              turn={game.turn}
+              groups={game.groups}
+              thinking={view?.thinking === true}
+            />
+          ) : null}
         </Group>
         {game !== null && game.foul !== null && (
           <Box style={{ position: 'absolute', top: '100%', left: 0, right: 0, padding: 'var(--mantine-spacing-xs)', zIndex: 10 }}>
@@ -225,6 +229,10 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
               flexDirection: 'column',
               justifyContent: 'center',
               borderRight: '1px solid var(--mantine-color-dark-4)',
+              // Recede while the shot is not the player's to take. The controls
+              // are already disabled; this makes that visible at a glance.
+              opacity: canAim ? 1 : 0.45,
+              transition: fade === undefined ? undefined : `opacity ${fade}`,
             }}
           >
             <Stack gap="xs">
@@ -250,7 +258,17 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
             </Stack>
           </Paper>
         )}
-        <Box style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+        <Box
+          style={{
+            position: 'relative',
+            flex: 1,
+            minHeight: 0,
+            // A 2px slate edge on the player's turn: the soft-divider tone,
+            // enough to mark the table as live without a hard white rule.
+            borderTop: `2px solid ${canAim ? 'var(--mantine-color-dark-2)' : 'transparent'}`,
+            transition: fade === undefined ? undefined : `border-color ${fade}`,
+          }}
+        >
           <canvas
             ref={canvasRef}
             aria-label="Pool table"
@@ -260,7 +278,7 @@ export function GameScreen({ difficulty, resume, onExit, onRematch }: GameScreen
       </Box>
       <Paper
         component="section"
-        aria-label="Game status"
+        aria-label="Shot status"
         radius={0}
         p="xs"
         style={{

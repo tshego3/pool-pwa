@@ -72,8 +72,9 @@ test('the controls mirror the bot shot without letting the player take it', asyn
       const shootButton = document.querySelector('button[aria-label="Shoot"]');
       const panel = document.querySelector('section[aria-label="Aim controls"]');
       const percent = panel?.textContent?.match(/(\d+)%/);
+      const botSeat = document.querySelector('[data-testid="seat-bot"]');
       return {
-        botTurn: document.body.textContent?.includes("Bot's turn") === true,
+        botTurn: botSeat?.getAttribute('data-active') === 'true',
         shootDisabled: shootButton?.hasAttribute('disabled') === true,
         power: percent === null || percent === undefined ? 0 : Number(percent[1]),
       };
