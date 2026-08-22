@@ -8,9 +8,17 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="8-Ball" />
-    <link rel="icon" type="image/svg+xml" href="/pool-pwa/favicon.svg" />
-    <link rel="apple-touch-icon" href="/pool-pwa/favicon.svg" />
-    <link rel="manifest" href="/pool-pwa/manifest.webmanifest" />
+    <!-- Relative, not root-absolute: the dev server prepends `base` to
+         root-absolute hrefs, which would turn these into /pool-pwa/pool-pwa/...
+         apple-touch-icon MUST be a PNG. iOS ignores an SVG here, and with no
+         usable icon declared Safari falls back to /apple-touch-icon.png at the
+         ORIGIN root - which on a github.io account is whatever another project
+         published there, so this app showed a different app's icon on the iOS
+         home screen. Regenerate all of these with scripts/generate-icons.mjs. -->
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <style>body{margin:0;background:#131313;color:#f5f5f5;font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif}</style>
     <title>8-Ball Pool</title>
     <script type="module" crossorigin src="/pool-pwa/assets/index-D8QgtGt7.js"></script>
